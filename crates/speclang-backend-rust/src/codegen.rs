@@ -193,8 +193,8 @@ impl RustCodeGen {
                 let arg_strs: Vec<String> = args.iter().map(|a| self.render_type(a)).collect();
                 format!("{name_s}<{}>", arg_strs.join(", "))
             }
-            Type::Capability(_) => "()".to_string(), // capabilities are ZSTs in Rust
-            Type::Region => "()".to_string(),
+            Type::Capability(name) => name.clone(),
+            Type::Region => "&bumpalo::Bump".to_string(),
         }
     }
 
@@ -228,9 +228,23 @@ impl RustCodeGen {
         for cap in caps {
             self.line(&format!("/// Capability token: {}", cap.name));
             if cap.fields.is_empty() {
+                self.line("#[derive(Debug, Clone, Copy)]");
                 self.line(&format!("pub struct {};", cap.name));
+                self.blank();
+                self.line(&format!("impl {} {{", cap.name));
+                self.push();
+                self.line(&format!(
+                    "/// Create a new `{}` capability token.",
+                    cap.name
+                ));
+                self.line(&format!(
+                    "pub fn new() -> Self {{ {} }}",
+                    cap.name
+                ));
+                self.pop();
+                self.line("}");
             } else {
-                self.line(&format!("#[derive(Debug)]"));
+                self.line("#[derive(Debug, Clone)]");
                 self.line(&format!("pub struct {} {{", cap.name));
                 self.push();
                 for f in &cap.fields {
@@ -602,9 +616,12 @@ impl RustCodeGen {
                 let body = self.render_block_inline(block);
                 format!("{{ {body} }}")
             }
-            Expr::Alloc { value, .. } => {
+            Expr::Alloc { region, value, .. } => {
                 let v = self.render_expr(value);
-                format!("Box::new({v})")
+                match region.as_ref() {
+                    Expr::Var(r) => format!("{r}.alloc({v})"),
+                    _ => format!("Box::new({v})"),
+                }
             }
             Expr::Borrow(inner) => {
                 let e = self.render_expr(inner);
@@ -1020,5 +1037,86 @@ mod tests {
         let code = generate_rust(&m);
         assert!(code.contains("data: &[u8]"), "got:\n{code}");
         assert!(code.contains("-> u64"), "got:\n{code}");
+    }
+
+    #[test]
+    fn codegen_capability_type_in_params() {
+        let mut m = make_module("test");
+        m.cap_defs.push(CapabilityDef {
+            name: "Net".into(),
+            fields: vec![],
+        });
+        m.functions.push(Function {
+            name: "fetch".into(),
+            params: vec![
+                Param {
+                    name: "url".into(),
+                    ty: Type::string(),
+                },
+                Param {
+                    name: "_net".into(),
+                    ty: Type::Capability("Net".into()),
+                },
+            ],
+            return_type: Type::string(),
+            effects: vec![CapabilityType { name: "Net".into() }],
+            contracts: vec![],
+            body: Block::new(
+                vec![],
+                Some(Expr::Literal(Literal::String("data".into()))),
+            ),
+            annotations: vec![],
+        });
+        let code = generate_rust(&m);
+        // Capability param renders as the cap struct type, not ()
+        assert!(code.contains("_net: Net"), "got:\n{code}");
+        // Capability struct has derive and constructor
+        assert!(code.contains("#[derive(Debug, Clone, Copy)]"), "got:\n{code}");
+        assert!(code.contains("pub fn new() -> Self"), "got:\n{code}");
+    }
+
+    #[test]
+    fn codegen_region_alloc_named() {
+        let mut m = make_module("test");
+        m.functions.push(Function {
+            name: "alloc_in_arena".into(),
+            params: vec![Param {
+                name: "arena".into(),
+                ty: Type::Region,
+            }],
+            return_type: Type::own(Region::Named("arena".into()), Type::i32()),
+            effects: vec![],
+            contracts: vec![],
+            body: Block::new(
+                vec![],
+                Some(Expr::Alloc {
+                    region: Box::new(Expr::Var("arena".into())),
+                    ty: Type::i32(),
+                    value: Box::new(Expr::Literal(Literal::Int(42))),
+                }),
+            ),
+            annotations: vec![],
+        });
+        let code = generate_rust(&m);
+        // Region param renders as &bumpalo::Bump
+        assert!(code.contains("arena: &bumpalo::Bump"), "got:\n{code}");
+        // Named region alloc uses arena.alloc()
+        assert!(code.contains("arena.alloc(42)"), "got:\n{code}");
+    }
+
+    #[test]
+    fn codegen_capability_with_fields() {
+        let mut m = make_module("test");
+        m.cap_defs.push(CapabilityDef {
+            name: "FileRead".into(),
+            fields: vec![CapabilityField {
+                name: "root".into(),
+                ty: Type::string(),
+            }],
+        });
+        let code = generate_rust(&m);
+        assert!(code.contains("#[derive(Debug, Clone)]"), "got:\n{code}");
+        assert!(code.contains("pub struct FileRead {"), "got:\n{code}");
+        assert!(code.contains("pub root: String"), "got:\n{code}");
     }
 }

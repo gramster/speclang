@@ -1,0 +1,10 @@
+[package]
+name = "speclang-impl"
+description = "IMPL (Implementation Layer) parser, verification, and lowering"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+speclang-spl.workspace = true
+thiserror.workspace = true
