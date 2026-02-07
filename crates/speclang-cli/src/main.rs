@@ -6,7 +6,9 @@
 //! - `compile` — Full pipeline: parse → check → lower → verify → codegen
 //! - `test`    — Extract and list test cases from a compiled module
 //! - `ir`      — Parse a Core IR file and pretty-print it
+//! - `fmt`     — Format an SPL or IMPL source file
 
+use speclang_diagnostic::{Diagnostic, SourceFile, render_diagnostics};
 use std::env;
 use std::fs;
 use std::process;
@@ -25,6 +27,7 @@ fn main() {
         "compile" => cmd_compile(&args[2..]),
         "test" => cmd_test(&args[2..]),
         "ir" => cmd_ir(&args[2..]),
+        "fmt" => cmd_fmt(&args[2..]),
         "version" | "--version" | "-V" => {
             println!("speclang v{}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -58,6 +61,7 @@ COMMANDS:
     compile   Full pipeline: parse → lower → verify → generate Rust
     test      Extract and list test cases from a compiled module
     ir        Parse a Core IR file and pretty-print it
+    fmt       Format an SPL or IMPL source file
     version   Print version information
     help      Print this help message
 
@@ -117,21 +121,84 @@ fn read_input_smart(args: &[String]) -> Result<(String, String), i32> {
 }
 
 // -----------------------------------------------------------------------
+// Diagnostic helpers
+// -----------------------------------------------------------------------
+
+/// Whether stderr is a TTY (for color output).
+fn use_color() -> bool {
+    // Simple heuristic: check TERM env var and NO_COLOR convention.
+    if env::var("NO_COLOR").is_ok() {
+        return false;
+    }
+    // On macOS/Linux, isatty on stderr. For now, default to true if TERM is set.
+    env::var("TERM").is_ok()
+}
+
+/// Emit diagnostics to stderr and return error exit code.
+fn emit_diagnostics(diagnostics: &[Diagnostic], source: &SourceFile) -> Result<(), i32> {
+    let output = render_diagnostics(diagnostics, Some(source), use_color());
+    eprint!("{}", output);
+    Err(1)
+}
+
+/// Convert an SPL parse error to a diagnostic.
+fn spl_parse_diagnostic(e: &speclang_spl::parser::ParseError) -> Diagnostic {
+    Diagnostic::error("parse", &e.message)
+        .with_span(e.span.start, e.span.end)
+}
+
+/// Convert SPL resolve errors to diagnostics.
+fn spl_resolve_diagnostics(errors: &[speclang_spl::resolve::ResolveError]) -> Vec<Diagnostic> {
+    errors
+        .iter()
+        .map(|e| Diagnostic::error("resolve", &e.message))
+        .collect()
+}
+
+/// Convert SPL type errors to diagnostics.
+fn spl_type_diagnostics(errors: &[speclang_spl::typecheck::TypeError]) -> Vec<Diagnostic> {
+    errors
+        .iter()
+        .map(|e| Diagnostic::error("typecheck", &e.message))
+        .collect()
+}
+
+/// Convert lowering errors to diagnostics.
+fn lower_diagnostics(errors: &[speclang_lower::lower::LowerError]) -> Vec<Diagnostic> {
+    errors
+        .iter()
+        .map(|e| Diagnostic::error("lower", &e.message))
+        .collect()
+}
+
+/// Convert verify errors to diagnostics.
+fn verify_diagnostics(errors: &[speclang_verify::typecheck::VerifyError]) -> Vec<Diagnostic> {
+    errors
+        .iter()
+        .map(|e| Diagnostic::error("verify", &e.message))
+        .collect()
+}
+
+/// Convert an IR parse error to a diagnostic.
+fn ir_parse_diagnostic(e: &speclang_ir_parser::parser::ParseError) -> Diagnostic {
+    Diagnostic::error("ir-parse", &e.message)
+        .with_span(e.span.start, e.span.end)
+}
+
+// -----------------------------------------------------------------------
 // parse — Parse an SPL file and print the AST
 // -----------------------------------------------------------------------
 
 fn cmd_parse(args: &[String]) -> Result<(), i32> {
     let (path, source) = read_input_smart(args)?;
+    let sf = SourceFile::new(&path, &source);
 
     match speclang_spl::parser::parse_program(&source) {
         Ok(program) => {
             println!("{:#?}", program);
             Ok(())
         }
-        Err(e) => {
-            eprintln!("{}:{}", path, e);
-            Err(1)
-        }
+        Err(e) => emit_diagnostics(&[spl_parse_diagnostic(&e)], &sf),
     }
 }
 
@@ -141,23 +208,16 @@ fn cmd_parse(args: &[String]) -> Result<(), i32> {
 
 fn cmd_check(args: &[String]) -> Result<(), i32> {
     let (path, source) = read_input_smart(args)?;
+    let sf = SourceFile::new(&path, &source);
 
     let program = match speclang_spl::parser::parse_program(&source) {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("{}:parse error: {}", path, e);
-            return Err(1);
-        }
+        Err(e) => return emit_diagnostics(&[spl_parse_diagnostic(&e)], &sf),
     };
 
     let resolved = match speclang_spl::resolve::resolve(&program) {
         Ok(r) => r,
-        Err(errors) => {
-            for e in &errors {
-                eprintln!("{}:resolve error: {:?}", path, e);
-            }
-            return Err(1);
-        }
+        Err(errors) => return emit_diagnostics(&spl_resolve_diagnostics(&errors), &sf),
     };
 
     match speclang_spl::typecheck::typecheck(&resolved) {
@@ -165,12 +225,7 @@ fn cmd_check(args: &[String]) -> Result<(), i32> {
             println!("{}: ok", path);
             Ok(())
         }
-        Err(errors) => {
-            for e in &errors {
-                eprintln!("{}:type error: {:?}", path, e);
-            }
-            Err(1)
-        }
+        Err(errors) => emit_diagnostics(&spl_type_diagnostics(&errors), &sf),
     }
 }
 
@@ -180,6 +235,7 @@ fn cmd_check(args: &[String]) -> Result<(), i32> {
 
 fn cmd_compile(args: &[String]) -> Result<(), i32> {
     let (path, source) = read_input_smart(args)?;
+    let sf = SourceFile::new(&path, &source);
     let output_path = find_output(args);
     let mode_str = find_flag(args, "--mode").unwrap_or("debug");
 
@@ -199,48 +255,29 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
     // 1. Parse
     let program = match speclang_spl::parser::parse_program(&source) {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("{}:parse error: {}", path, e);
-            return Err(1);
-        }
+        Err(e) => return emit_diagnostics(&[spl_parse_diagnostic(&e)], &sf),
     };
 
     // 2. Resolve names
     let resolved = match speclang_spl::resolve::resolve(&program) {
         Ok(r) => r,
-        Err(errors) => {
-            for e in &errors {
-                eprintln!("{}:resolve error: {:?}", path, e);
-            }
-            return Err(1);
-        }
+        Err(errors) => return emit_diagnostics(&spl_resolve_diagnostics(&errors), &sf),
     };
 
     // 3. Type-check
     if let Err(errors) = speclang_spl::typecheck::typecheck(&resolved) {
-        for e in &errors {
-            eprintln!("{}:type error: {:?}", path, e);
-        }
-        return Err(1);
+        return emit_diagnostics(&spl_type_diagnostics(&errors), &sf);
     }
 
     // 4. Lower to Core IR
     let ir_module = match speclang_lower::lower::lower(&resolved) {
         Ok(m) => m,
-        Err(errors) => {
-            for e in &errors {
-                eprintln!("{}:lower error: {:?}", path, e);
-            }
-            return Err(1);
-        }
+        Err(errors) => return emit_diagnostics(&lower_diagnostics(&errors), &sf),
     };
 
     // 5. Verify Core IR
     if let Err(errors) = speclang_verify::typecheck::verify_module(&ir_module) {
-        for e in &errors {
-            eprintln!("{}:verify error: {:?}", path, e);
-        }
-        return Err(1);
+        return emit_diagnostics(&verify_diagnostics(&errors), &sf);
     }
 
     // 6. Insert contract assertions
@@ -274,34 +311,22 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
 
 fn cmd_test(args: &[String]) -> Result<(), i32> {
     let (path, source) = read_input_smart(args)?;
+    let sf = SourceFile::new(&path, &source);
 
     // Parse → resolve → lower
     let program = match speclang_spl::parser::parse_program(&source) {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("{}:parse error: {}", path, e);
-            return Err(1);
-        }
+        Err(e) => return emit_diagnostics(&[spl_parse_diagnostic(&e)], &sf),
     };
 
     let resolved = match speclang_spl::resolve::resolve(&program) {
         Ok(r) => r,
-        Err(errors) => {
-            for e in &errors {
-                eprintln!("{}:resolve error: {:?}", path, e);
-            }
-            return Err(1);
-        }
+        Err(errors) => return emit_diagnostics(&spl_resolve_diagnostics(&errors), &sf),
     };
 
     let ir_module = match speclang_lower::lower::lower(&resolved) {
         Ok(m) => m,
-        Err(errors) => {
-            for e in &errors {
-                eprintln!("{}:lower error: {:?}", path, e);
-            }
-            return Err(1);
-        }
+        Err(errors) => return emit_diagnostics(&lower_diagnostics(&errors), &sf),
     };
 
     // Extract tests
@@ -353,6 +378,7 @@ fn cmd_test(args: &[String]) -> Result<(), i32> {
 
 fn cmd_ir(args: &[String]) -> Result<(), i32> {
     let (path, source) = read_input_smart(args)?;
+    let sf = SourceFile::new(&path, &source);
 
     match speclang_ir_parser::parse_module(&source) {
         Ok(module) => {
@@ -360,9 +386,48 @@ fn cmd_ir(args: &[String]) -> Result<(), i32> {
             print!("{}", output);
             Ok(())
         }
-        Err(e) => {
-            eprintln!("{}:IR parse error: {}", path, e);
-            Err(1)
+        Err(e) => emit_diagnostics(&[ir_parse_diagnostic(&e)], &sf),
+    }
+}
+
+// -----------------------------------------------------------------------
+// fmt — Format SPL or IMPL source
+// -----------------------------------------------------------------------
+
+fn cmd_fmt(args: &[String]) -> Result<(), i32> {
+    let (path, source) = read_input_smart(args)?;
+
+    // Try SPL first, then IMPL
+    if let Ok(program) = speclang_spl::parser::parse_program(&source) {
+        let formatted = speclang_fmt::format_spl(&program);
+        let output = find_output(args);
+        if let Some(out_path) = output {
+            fs::write(out_path, &formatted).map_err(|e| {
+                eprintln!("error: cannot write '{}': {}", out_path, e);
+                1
+            })?;
+        } else {
+            print!("{}", formatted);
+        }
+        Ok(())
+    } else if let Ok(program) = speclang_impl::parser::parse_impl(&source) {
+        let formatted = speclang_fmt::format_impl(&program);
+        let output = find_output(args);
+        if let Some(out_path) = output {
+            fs::write(out_path, &formatted).map_err(|e| {
+                eprintln!("error: cannot write '{}': {}", out_path, e);
+                1
+            })?;
+        } else {
+            print!("{}", formatted);
+        }
+        Ok(())
+    } else {
+        let sf = SourceFile::new(&path, &source);
+        // Show SPL parse errors since that's the most common case
+        match speclang_spl::parser::parse_program(&source) {
+            Err(e) => emit_diagnostics(&[spl_parse_diagnostic(&e)], &sf),
+            Ok(_) => unreachable!(),
         }
     }
 }

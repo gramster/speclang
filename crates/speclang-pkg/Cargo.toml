@@ -1,0 +1,10 @@
+[package]
+name = "speclang-pkg"
+description = "Package manifest format and dependency resolution for speclang"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+toml = "0.8"
+thiserror = { workspace = true }

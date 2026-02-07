@@ -1,0 +1,11 @@
+[package]
+name = "speclang-fmt"
+description = "SPL and IMPL source code formatter and pretty-printer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+speclang-spl.workspace = true
+speclang-impl.workspace = true
