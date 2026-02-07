@@ -1,227 +1,166 @@
 # speclang
 
-A two-layer systems programming language where **specifications are the source of truth**.
+A two-layer systems programming language where **specifications are the
+source of truth**.
 
-SPL (Spec Layer) is a purely declarative language for expressing types, contracts,
-capabilities, and executable examples. IMPL (Implementation Layer) is a systems
-language with ownership, regions, and explicit effects that *binds* to SPL
-specifications. The compiler verifies that every implementation conforms to its
-spec — signatures match, effects are contained, and contracts hold.
+Humans (or agents) write short, readable `.spl` specs — types, contracts,
+examples.  Agents write `.impl` code.  The compiler verifies that every
+implementation conforms to its spec, generates test harnesses from the
+spec, and transpiles everything to Rust or WebAssembly.
 
-## Why?
-
-Traditional development treats tests as the primary correctness artifact.
-speclang treats **executable specifications** as the canonical truth:
-
-- **SPL files** declare *what* a module does — types, contracts, error
-  taxonomy, required capabilities, and examples.
-- **IMPL files** declare *how* — with ownership, borrowing, regions, and
-  explicit I/O capabilities.
-- The compiler checks that IMPL satisfies SPL, generates test harnesses from
-  examples and properties, and transpiles to Rust or WebAssembly.
-
-The result: humans review compact, readable specs; code is a derived artifact
-that the toolchain can verify automatically.
+**The key insight**: you review the spec (20 lines), not the code (200 lines).
+The toolchain proves they match.
 
 ## Quick start
 
 ```bash
-# Build the compiler
 cargo build --release
 
-# Type-check a sample spec
+# Check a spec
 cargo run -- check samples/hello.spl
 
-# Compile to Rust
-cargo run -- compile samples/hello.spl
+# Build spec + implementation → verified Rust (with generated tests)
+cargo run -- build samples/hello.spl samples/hello.impl
 
-# Compile to WebAssembly (WAT)
-cargo run -- wasm samples/hello.spl
-
-# List generated tests and requirement coverage
+# See what tests the spec generates
 cargo run -- test samples/hello.spl
-
-# Format the source
-cargo run -- fmt samples/hello.spl
 ```
 
-See [`samples/`](samples/) for complete working examples with expected
-output — both a minimal starter (`hello.spl`) and a full-featured spec
-(`music.spl`) that exercises refined types, generators, properties,
-oracles, and policy.
+See [`samples/README.md`](samples/README.md) for a full walkthrough
+from requirements → spec → implementation → verified output.
 
-## Language overview
+## How it works
 
-### SPL — the Spec Layer
+### 1. Write a spec (`.spl`)
 
 SPL is declarative: no loops, no mutation, no I/O. It defines checkable
 specifications that read like structured requirements.
 
 ```text
-module music
+module math.clamp;
 
-type MidiNote = refine Int where 1 <= self && self <= 12
+req REQ-1: "Result is within bounds";
 
-fn snap_to_scale(note: MidiNote, scale: Set[MidiNote]) -> MidiNote
-  requires not is_empty(scale)
-  ensures  contains(scale, result)
-  examples
-    snap_to_scale(12, {1, 5, 8}) == 1
-    snap_to_scale(1,  {1, 5, 8}) == 1
+fn clamp @id("math.clamp.v1")
+  (value: Int, lo: Int, hi: Int) -> Int
+{
+  requires { lo <= hi; }
+  ensures [REQ-1] { result >= lo; result <= hi; }
+  examples {
+    "below":  clamp(0,  1, 10) == 1;
+    "above":  clamp(99, 1, 10) == 10;
+    "within": clamp(5,  1, 10) == 5;
+  }
+};
 ```
 
-SPL constructs include: `type`, `fn`, `refine`, `error`, `capability`,
-`law`/`prop`, `examples`, `perf`, `req`, `decision`, `gen`, `oracle`,
-and `policy`.
+### 2. Write the code (`.impl`)
 
-### IMPL — the Implementation Layer
-
-IMPL is a minimal systems language with ownership semantics. It binds to
-SPL-declared stable IDs:
+IMPL is a systems language with ownership. It binds to the spec by stable ID:
 
 ```text
-impl fn "music.snap.v1"(note: MidiNote, scale: ref[Set[MidiNote]]) -> MidiNote {
-    let closest = scale[0];
-    let best = distance_mod12(closest, note);
-    for candidate in scale {
-        let d = distance_mod12(candidate, note);
-        if d < best || (d == best && candidate < closest) {
-            closest = candidate;
-            best = d;
-        }
-    }
-    closest
+module math.clamp;
+
+impl fn "math.clamp.v1" clamp(value: int, lo: int, hi: int) -> int {
+    if value < lo { lo }
+    else if value > hi { hi }
+    else { value }
 }
 ```
 
-The compiler checks:
-- Signature matches the SPL spec
-- Effects used ⊆ effects declared in SPL
-- Contracts and examples pass via generated harnesses
+### 3. Build — the compiler verifies the binding
 
-### Core IR
-
-Between SPL/IMPL and the backends sits a small, explicit intermediate
-representation. Core IR makes every allocation, copy, and capability token
-visible.  See [docs/core-ir-overview.md](docs/core-ir-overview.md) for the
-full specification.
-
-### Capabilities and effects
-
-Functions declare what side effects they may perform. The default is pure
-(no effects). Capabilities are passed as explicit tokens:
-
-```text
-fn fetch_config(net: cap Net) -> Config
-  effects { Net(host(url)) }
-  forbids { FileRead, Clock }
+```
+$ speclang build hello.spl hello.impl
 ```
 
-Package-level `policy` blocks restrict what capabilities any module in the
-package may request, providing a trust boundary for agent-generated code.
+The `build` command:
+1. Parses and type-checks the SPL spec
+2. Parses the IMPL code
+3. **Binds**: verifies signatures match (types, parameter counts, return type)
+4. **Effects**: verifies no undeclared capabilities are used
+5. **Merges**: combines spec-generated tests with implementation bodies
+6. **Codegen**: emits Rust with both the real `clamp()` body and the generated test functions
+
+If the agent's code doesn't match the spec, the build fails *before*
+any code is generated.
+
+### Additional SPL constructs
+
+SPL can express much more than pre/postconditions:
+
+| Construct | Purpose |
+|-----------|---------|
+| `refine` | Constrained types: `MidiNote = Int refine (1 <= self and self <= 12)` |
+| `error` | Error taxonomy: `error ParseError { BadInput: "bad input"; }` |
+| `capability` | Effect declarations: `capability Net(host: Host)` |
+| `gen` | Input generators for property testing / fuzzing |
+| `prop` | Universally-quantified properties: `forall x: T ...` |
+| `decision` | Explicit ambiguity resolution (tie-break rules) |
+| `oracle` | Differential testing: reference vs optimized implementation |
+| `policy` | Package-level capability restrictions: `deny Net; deterministic;` |
+| `req` | Requirement IDs for traceability |
+| `perf` | Performance constraints |
+
+See [`samples/music.spl`](samples/music.spl) for a spec using all of these.
 
 ## Architecture
 
-speclang is implemented as a Rust workspace with 13 crates:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     speclang-cli                        │
-│              (parse, check, compile, wasm, fmt, ir)     │
-└──────┬──────────┬──────────┬───────────┬────────────────┘
-       │          │          │           │
- ┌─────▼────┐ ┌──▼───┐ ┌───▼────┐ ┌────▼──────┐
- │  spl     │ │ impl │ │ stdlib │ │ ir-parser │
- │ (parse,  │ │      │ │        │ │           │
- │  check)  │ │      │ │        │ │           │
- └─────┬────┘ └──┬───┘ └───┬────┘ └───────────┘
-       │         │         │
-  ┌────▼─────────▼─────────▼────┐
-  │          lower              │
-  └──────────┬──────────────────┘
-             │
-  ┌──────────▼──────────────────┐
-  │          verify             │
-  │  (typecheck, contracts,     │
-  │   ownership, capabilities,  │
-  │   proptest, fuzz)           │
-  └──────────┬──────────────────┘
-             │
-  ┌──────────▼────┬─────────────┐
-  │ backend-rust  │ backend-wasm│
-  └───────────────┴─────────────┘
-```
-
-Supporting crates:
+speclang is a Rust workspace with 13 crates:
 
 | Crate | Purpose |
 |-------|---------|
+| `speclang-cli` | CLI driver — `compile`, `build`, `wasm`, `check`, `fmt`, `ir` |
+| `speclang-spl` | SPL lexer, parser, resolver, type checker |
+| `speclang-impl` | IMPL lexer, parser, spec binding, effects checker |
 | `speclang-ir` | Core IR types, expressions, modules, contracts |
 | `speclang-ir-parser` | Textual Core IR parser and pretty-printer |
-| `speclang-spl` | SPL lexer, parser, resolver, and type checker |
-| `speclang-impl` | IMPL lexer, parser, spec binding, effects checker |
-| `speclang-lower` | SPL → Core IR lowering |
-| `speclang-verify` | IR type checking, contracts, ownership, exhaustiveness, proptest, fuzz |
-| `speclang-stdlib` | Standard library modules (core, math, mem, text, bytes, collections, contracts) |
-| `speclang-backend-rust` | Core IR → idiomatic Rust source transpiler |
+| `speclang-lower` | SPL/IMPL → Core IR lowering |
+| `speclang-verify` | IR type checking, contracts, ownership, proptest, fuzz |
+| `speclang-stdlib` | Standard library (core, math, mem, text, collections, contracts) |
+| `speclang-backend-rust` | Core IR → idiomatic Rust transpiler |
 | `speclang-backend-wasm` | Core IR → WebAssembly Text (WAT) with WASI preview-1 |
-| `speclang-diagnostic` | Structured diagnostics with source-annotated rendering |
+| `speclang-diagnostic` | Structured diagnostics with source annotations |
 | `speclang-fmt` | Canonical SPL and IMPL source formatter |
 | `speclang-pkg` | `pkg.toml` manifest parsing and dependency resolution |
-| `speclang-cli` | CLI compiler driver |
 
-## Compilation pipeline
+## Compilation pipelines
+
+**Spec only** (`compile` / `wasm`) — generate stubs and test harnesses from
+a spec alone, useful for early validation before any code is written:
 
 ```
-  .spl file
-     │
-     ▼
-  ┌──────────┐    ┌──────────┐
-  │  parse   │───▶│ resolve  │───▶ type-check
-  └──────────┘    └──────────┘        │
-                                      ▼
-                                   lower (SPL → Core IR)
-                                      │
-                                      ▼
-                                   verify (type-check IR,
-                                           contracts,
-                                           capabilities)
-                                      │
-                            ┌─────────┴──────────┐
-                            ▼                    ▼
-                       Rust codegen         WASM codegen
-                            │                    │
-                            ▼                    ▼
-                        .rs file             .wat file
+  .spl ──▶ parse ──▶ resolve ──▶ typecheck ──▶ lower ──▶ verify ──▶ codegen
 ```
+
+**Full build** (`build`) — combine spec and implementation into verified,
+working code with generated tests:
+
+```
+  .spl ──▶ parse/resolve/typecheck ──▶ lower ──┐
+                                                ├──▶ merge ──▶ verify ──▶ codegen
+  .impl ──▶ parse ──▶ bind ──▶ effects ──▶ lower ┘
+```
+
+The `bind` step structurally verifies every IMPL function matches its SPL
+declaration (parameter types, return type, capabilities). The `merge`
+step combines SPL-generated contracts and test harnesses with IMPL function
+bodies, so the output is both working code and a test suite.
 
 ## Testing
 
 ```bash
-# Run all 327 tests across all crates
-cargo test
-
-# Run tests for a specific crate
-cargo test -p speclang-spl
-cargo test -p speclang-verify
+cargo test          # all tests across all crates
+cargo test -p speclang-spl   # just one crate
 ```
 
-The test suite covers:
-- **SPL parsing and type checking** — 54 tests
-- **IMPL parsing, binding, and effects** — 61 tests
-- **Core IR verification** — 59 tests (including property tests and fuzzing)
-- **Standard library** — 36 tests
-- **IR parser round-tripping** — 21 tests
-- **Rust backend codegen** — 15 tests
-- **WASM backend codegen** — 19 tests
-- **Diagnostics** — 15 tests
-- **Formatter** — 19 tests
-- **Package manifest** — 16 tests
-- **SPL → IR lowering** — 12 tests
+327 tests cover parsing, type checking, binding, effects, IR verification
+(including property tests and fuzzing), codegen for both backends,
+diagnostics, formatting, and package manifests.
 
 ## Documentation
 
-Design documents live in [`docs/`](docs/):
+Design docs in [`docs/`](docs/):
 
 - [System overview](docs/system-overview.md) — two-layer architecture, SPL vs IMPL, effects
 - [Design principles](docs/design-principles.md) — readability, examples-first, no-how-in-spec
@@ -229,6 +168,9 @@ Design documents live in [`docs/`](docs/):
 - [Core IR grammar](docs/ir-grammar.md) — textual syntax for Core IR
 - [Standard library](docs/stdlib-v0.md) — v0 stdlib surface (Option, Result, math, mem, text, collections)
 - [Workflow](docs/workflow.md) — human-agent workflow with SPL as executable requirements
+
+See [`samples/`](samples/) for a complete walkthrough from requirements to
+verified code.
 
 ## License
 

@@ -1,0 +1,16 @@
+// Implementation of math.clamp.
+//
+// This file provides the actual function body that the speclang
+// compiler will verify against the SPL spec in hello.spl.
+
+module math.clamp;
+
+impl fn "math.clamp.v1" clamp(value: int, lo: int, hi: int) -> int {
+    if value < lo {
+        lo
+    } else if value > hi {
+        hi
+    } else {
+        value
+    }
+}

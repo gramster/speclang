@@ -15,9 +15,6 @@
   ;; Stack pointer
   (global $sp (mut i32) (i32.const 1024))
 
-  ;; Type definitions
-  ;; type Bound = Int
-
   ;; @req REQ-2
   (func $test_clamp_0 (export "test_clamp_0") 
     i32.const 0
@@ -59,7 +56,7 @@
 
   ;; @id math.clamp.v1
   ;; @compat stable-call
-  (func $clamp (export "clamp") (param $value i64) (param $lo i32) (param $hi i32) (result i64)
+  (func $clamp (export "clamp") (param $value i64) (param $lo i64) (param $hi i64) (result i64)
     ;; requires contract
     local.get $lo
     local.get $hi

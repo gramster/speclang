@@ -17,11 +17,7 @@ pub fn test_clamp_2() {
 }
 
 // id: math.clamp.v1
-// compat: stable-call
 pub fn clamp(value: i64, lo: i64, hi: i64) -> i64 {
-    debug_assert!((lo <= hi));
-    assert!((lo <= hi), "precondition failed: clamp");
-    // ensures: (result >= lo)
-    // ensures: (result <= hi)
+    if (value < lo) { lo } else { if (value > hi) { hi } else { value } }
 }
 

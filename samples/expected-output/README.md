@@ -1,15 +1,16 @@
 # Expected Output
 
-This directory contains the expected output from running the speclang
-compiler on the sample files. You can use these to see what the
-toolchain produces without building first, or to verify your build
-matches.
+Pre-generated compiler output so you can see the results without
+building.
 
-## Generating fresh output
+| File | Source | Command |
+|------|--------|---------|
+| `hello.rs` | Spec only — contracts, no body | `speclang compile hello.spl` |
+| `hello-built.rs` | Spec + impl — body + tests | `speclang build hello.spl hello.impl` |
+| `hello.wat` | Spec → WebAssembly | `speclang wasm hello.spl` |
+| `music.rs` | Full-featured spec → Rust | `speclang compile music.spl` |
+| `music.wat` | Full-featured spec → WASM | `speclang wasm music.spl` |
 
-```bash
-cargo run -- compile samples/hello.spl > samples/expected-output/hello.rs
-cargo run -- wasm samples/hello.spl > samples/expected-output/hello.wat
-cargo run -- compile samples/music.spl > samples/expected-output/music.rs
-cargo run -- wasm samples/music.spl > samples/expected-output/music.wat
-```
+Compare `hello.rs` (stub with contracts) vs `hello-built.rs` (real
+implementation with test harness) — that's the core value of the
+two-layer approach.

@@ -7,6 +7,7 @@
 //! | `parse <file.spl>` | Parse an SPL file and print the AST |
 //! | `check <file.spl>` | Parse, resolve, and type-check an SPL file |
 //! | `compile <file.spl>` | Full pipeline: parse → check → lower → verify → Rust codegen |
+//! | `build <file.spl> <file.impl>` | Compile SPL spec + IMPL code → Rust (with binding/effects checks) |
 //! | `wasm <file.spl>` | Full pipeline through to WebAssembly (WAT) codegen |
 //! | `test <file.spl>` | Extract and list test cases from a compiled module |
 //! | `ir <file.ir>` | Parse a Core IR file and pretty-print it |
@@ -18,7 +19,10 @@
 //! # Type-check a spec
 //! speclang check src/main.spl
 //!
-//! # Compile to Rust
+//! # Compile spec + implementation to Rust
+//! speclang build src/main.spl src/main.impl
+//!
+//! # Compile spec-only to Rust (stubs with contracts)
 //! speclang compile src/main.spl
 //!
 //! # Compile to WebAssembly
@@ -42,6 +46,7 @@ fn main() {
         "parse" => cmd_parse(&args[2..]),
         "check" => cmd_check(&args[2..]),
         "compile" => cmd_compile(&args[2..]),
+        "build" => cmd_build(&args[2..]),
         "test" => cmd_test(&args[2..]),
         "ir" => cmd_ir(&args[2..]),
         "fmt" => cmd_fmt(&args[2..]),
@@ -77,6 +82,7 @@ COMMANDS:
     parse     Parse an SPL file and print the AST
     check     Parse, resolve, and type-check an SPL file
     compile   Full pipeline: parse → lower → verify → generate Rust
+    build     Compile SPL + IMPL → bind → effects → generate Rust
     test      Extract and list test cases from a compiled module
     ir        Parse a Core IR file and pretty-print it
     fmt       Format an SPL or IMPL source file
@@ -322,6 +328,194 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
     }
 
     Ok(())
+}
+
+// -----------------------------------------------------------------------
+// build — Compile SPL spec + IMPL implementation together
+// -----------------------------------------------------------------------
+
+fn cmd_build(args: &[String]) -> Result<(), i32> {
+    // We need two positional args: <spec.spl> <impl.impl>
+    let positional: Vec<&str> = args
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .map(|s| s.as_str())
+        .collect();
+
+    if positional.len() < 2 {
+        eprintln!("error: build requires two files: <spec.spl> <code.impl>");
+        eprintln!("usage: speclang build [OPTIONS] <spec.spl> <code.impl>");
+        return Err(1);
+    }
+
+    let spl_path = positional[0];
+    let impl_path = positional[1];
+    let output_path = find_output(args);
+    let mode_str = find_flag(args, "--mode").unwrap_or("debug");
+
+    let mode = match mode_str {
+        "debug" => speclang_verify::contract_pass::CompilationMode::Debug,
+        "release" => speclang_verify::contract_pass::CompilationMode::Release,
+        "sampled" => speclang_verify::contract_pass::CompilationMode::ReleaseSampled,
+        other => {
+            eprintln!(
+                "error: unknown compilation mode '{}' (expected debug/release/sampled)",
+                other
+            );
+            return Err(1);
+        }
+    };
+
+    let spl_source = match fs::read_to_string(spl_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: cannot read '{}': {}", spl_path, e);
+            return Err(1);
+        }
+    };
+    let impl_source = match fs::read_to_string(impl_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: cannot read '{}': {}", impl_path, e);
+            return Err(1);
+        }
+    };
+
+    let spl_sf = SourceFile::new(spl_path, &spl_source);
+    let impl_sf = SourceFile::new(impl_path, &impl_source);
+
+    // 1. Parse SPL
+    let spl_program = match speclang_spl::parser::parse_program(&spl_source) {
+        Ok(p) => p,
+        Err(e) => return emit_diagnostics(&[spl_parse_diagnostic(&e)], &spl_sf),
+    };
+
+    // 2. Resolve & type-check SPL
+    let resolved = match speclang_spl::resolve::resolve(&spl_program) {
+        Ok(r) => r,
+        Err(errors) => return emit_diagnostics(&spl_resolve_diagnostics(&errors), &spl_sf),
+    };
+
+    if let Err(errors) = speclang_spl::typecheck::typecheck(&resolved) {
+        return emit_diagnostics(&spl_type_diagnostics(&errors), &spl_sf);
+    }
+
+    // 3. Parse IMPL
+    let impl_program = match speclang_impl::parser::parse_impl(&impl_source) {
+        Ok(p) => p,
+        Err(e) => {
+            let d = Diagnostic::error("impl-parse", &e.message)
+                .with_span(e.span.start, e.span.end);
+            return emit_diagnostics(&[d], &impl_sf);
+        }
+    };
+
+    // 4. Bind: verify IMPL matches SPL specs
+    if let Err(errors) = speclang_impl::bind::verify_bindings(&impl_program, &spl_program) {
+        let diagnostics: Vec<Diagnostic> = errors
+            .iter()
+            .map(|e| Diagnostic::error("bind", &format!("[{}] {}", e.stable_id, e.message)))
+            .collect();
+        return emit_diagnostics(&diagnostics, &impl_sf);
+    }
+
+    // 5. Effects: verify capability containment
+    if let Err(errors) = speclang_impl::effects::check_effects(&impl_program) {
+        let diagnostics: Vec<Diagnostic> = errors
+            .iter()
+            .map(|e| Diagnostic::error("effects", &format!("in `{}`: {}", e.function, e.message)))
+            .collect();
+        return emit_diagnostics(&diagnostics, &impl_sf);
+    }
+
+    // 6. Lower SPL (for types, test harnesses, contracts)
+    let spl_ir = match speclang_lower::lower::lower(&resolved) {
+        Ok(m) => m,
+        Err(errors) => return emit_diagnostics(&lower_diagnostics(&errors), &spl_sf),
+    };
+
+    // 7. Lower IMPL (for function bodies)
+    let impl_ir = match speclang_impl::lower::lower_impl(&impl_program) {
+        Ok(m) => m,
+        Err(errors) => {
+            let diagnostics: Vec<Diagnostic> = errors
+                .iter()
+                .map(|e| Diagnostic::error("impl-lower", &e.message))
+                .collect();
+            return emit_diagnostics(&diagnostics, &impl_sf);
+        }
+    };
+
+    // 8. Merge: SPL IR provides types/tests/contracts, IMPL IR provides function bodies.
+    //    For functions that appear in both, prefer the IMPL version (it has the body).
+    let merged = merge_modules(spl_ir, impl_ir);
+
+    // 9. Verify merged IR
+    if let Err(errors) = speclang_verify::typecheck::verify_module(&merged) {
+        // Collect both source files for context
+        let diagnostics = verify_diagnostics(&errors);
+        let output = render_diagnostics(&diagnostics, Some(&spl_sf), use_color());
+        eprint!("{}", output);
+        return Err(1);
+    }
+
+    // 10. Insert contract assertions
+    let ir_with_contracts =
+        speclang_verify::contract_pass::insert_contracts(&merged, mode);
+
+    // 11. Generate Rust code
+    let codegen = speclang_backend_rust::codegen::RustCodeGen::new();
+    let rust_source = codegen.generate(&ir_with_contracts);
+
+    // Output
+    match output_path {
+        Some(out) => {
+            if let Err(e) = fs::write(out, &rust_source) {
+                eprintln!("error: cannot write '{}': {}", out, e);
+                return Err(1);
+            }
+            eprintln!("{} + {}: compiled to {}", spl_path, impl_path, out);
+        }
+        None => {
+            print!("{}", rust_source);
+        }
+    }
+
+    Ok(())
+}
+
+/// Merge SPL-lowered and IMPL-lowered Core IR modules.
+///
+/// The SPL module provides type definitions, test harnesses, contract metadata,
+/// and capability declarations. The IMPL module provides function bodies.
+/// When a function name appears in both, the IMPL version (with its body) wins.
+fn merge_modules(spl: speclang_ir::Module, impl_mod: speclang_ir::Module) -> speclang_ir::Module {
+    use std::collections::HashSet;
+
+    // Collect IMPL function names
+    let impl_fn_names: HashSet<&str> = impl_mod
+        .functions
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
+
+    // Keep SPL functions that aren't overridden by IMPL
+    let mut functions: Vec<speclang_ir::Function> = spl
+        .functions
+        .into_iter()
+        .filter(|f| !impl_fn_names.contains(f.name.as_str()))
+        .collect();
+
+    // Add all IMPL functions (these have bodies)
+    functions.extend(impl_mod.functions);
+
+    speclang_ir::Module {
+        name: spl.name,
+        type_defs: spl.type_defs,
+        cap_defs: spl.cap_defs,
+        functions,
+        externs: spl.externs,
+    }
 }
 
 // -----------------------------------------------------------------------
