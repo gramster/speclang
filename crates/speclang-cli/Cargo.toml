@@ -11,3 +11,4 @@ speclang-spl.workspace = true
 speclang-lower.workspace = true
 speclang-verify.workspace = true
 speclang-backend-rust.workspace = true
+speclang-stdlib.workspace = true

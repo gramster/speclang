@@ -14,6 +14,7 @@
 pub mod capabilities;
 pub mod contract_pass;
 pub mod exhaustiveness;
+pub mod fuzz;
 pub mod ownership;
 pub mod proptest;
 pub mod regions;

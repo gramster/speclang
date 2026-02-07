@@ -67,6 +67,7 @@ dependencies = [
  "speclang-ir-parser",
  "speclang-lower",
  "speclang-spl",
+ "speclang-stdlib",
  "speclang-verify",
 ]
 
