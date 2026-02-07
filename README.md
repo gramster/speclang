@@ -29,21 +29,26 @@ that the toolchain can verify automatically.
 # Build the compiler
 cargo build --release
 
-# Parse and type-check an SPL file
-cargo run -- check path/to/spec.spl
+# Type-check a sample spec
+cargo run -- check samples/hello.spl
 
-# Compile SPL → Rust source
-cargo run -- compile path/to/spec.spl
+# Compile to Rust
+cargo run -- compile samples/hello.spl
 
-# Compile SPL → WebAssembly (WAT)
-cargo run -- wasm path/to/spec.spl
+# Compile to WebAssembly (WAT)
+cargo run -- wasm samples/hello.spl
 
-# Format an SPL or IMPL file
-cargo run -- fmt path/to/file.spl
+# List generated tests and requirement coverage
+cargo run -- test samples/hello.spl
 
-# Parse and pretty-print Core IR
-cargo run -- ir path/to/file.ir
+# Format the source
+cargo run -- fmt samples/hello.spl
 ```
+
+See [`samples/`](samples/) for complete working examples with expected
+output — both a minimal starter (`hello.spl`) and a full-featured spec
+(`music.spl`) that exercises refined types, generators, properties,
+oracles, and policy.
 
 ## Language overview
 

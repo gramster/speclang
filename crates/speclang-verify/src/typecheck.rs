@@ -15,6 +15,27 @@ use speclang_ir::types::{QName, Type};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+/// Builtin type names recognised by the SPL frontend.
+///
+/// These are always in scope and do not require a `TypeDef` in the module.
+const BUILTIN_TYPES: &[&str] = &[
+    "Set", "List", "Map", "Option", "Result",
+    "Vec", "String", "Bytes",
+];
+
+/// Builtin / stdlib function names that may appear in lowered contracts
+/// and property tests without a corresponding `Function` or `ExternFunction`
+/// definition in the module being verified.
+const BUILTIN_FUNCTIONS: &[&str] = &[
+    // collections
+    "set_contains", "set_is_empty", "scale_is_nonempty",
+    "list_contains", "list_len", "map_contains_key",
+    // contract helpers
+    "is_empty", "len", "contains",
+    // comparisons lowered from refine exprs
+    "set_of",
+];
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -270,10 +291,13 @@ impl<'a> Verifier<'a> {
             self.err(format!("empty type name (context: {context})"));
             return;
         }
-        // For single-component names, check against known type defs.
+        // For single-component names, check against known type defs
+        // and the builtin type allowlist.
         if qname.len() == 1 {
             let name = &qname[0];
-            if !self.type_names.contains(name) {
+            if !self.type_names.contains(name)
+                && !BUILTIN_TYPES.iter().any(|b| *b == name)
+            {
                 // May be a built-in or cross-module reference.
                 // Built-in types are represented as Primitive, so
                 // Named("Int") would be an error.
@@ -315,8 +339,11 @@ impl<'a> Verifier<'a> {
             }
 
             Expr::Call { func, args } => {
-                // Check the function exists.
-                if func.len() == 1 && !self.fn_names.contains(&func[0]) {
+                // Check the function exists (module-defined or builtin).
+                if func.len() == 1
+                    && !self.fn_names.contains(&func[0])
+                    && !BUILTIN_FUNCTIONS.iter().any(|b| *b == func[0].as_str())
+                {
                     self.err(format!(
                         "call to undefined function '{}' (context: {context})",
                         func[0]

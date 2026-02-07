@@ -1,0 +1,48 @@
+# A minimal speclang specification.
+#
+# This module defines a simple "clamp" function that constrains an
+# integer to a range, with contracts and executable examples.
+
+module math.clamp;
+
+# ------------------------------------------------------------------
+# Requirements
+# ------------------------------------------------------------------
+
+req REQ-1: "Clamp returns a value within bounds";
+req REQ-2: "Clamp is idempotent on in-range values";
+
+# ------------------------------------------------------------------
+# Types
+# ------------------------------------------------------------------
+
+type Bound = Int;
+
+# ------------------------------------------------------------------
+# Function spec
+# ------------------------------------------------------------------
+
+fn clamp @id("math.clamp.v1") @compat(stable_call)
+  (value: Int, lo: Bound, hi: Bound) -> Int
+{
+  requires {
+    lo <= hi;
+  }
+
+  ensures [REQ-1] {
+    result >= lo;
+    result <= hi;
+  }
+
+  examples [REQ-2] {
+    "below range":  clamp(0,  1, 10) == 1;
+    "above range":  clamp(99, 1, 10) == 10;
+    "within range": clamp(5,  1, 10) == 5;
+  }
+
+  notes {
+    "When value < lo, returns lo.";
+    "When value > hi, returns hi.";
+    "Otherwise returns value unchanged.";
+  }
+};

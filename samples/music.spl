@@ -1,0 +1,92 @@
+# A full-featured speclang specification demonstrating most SPL
+# constructs: refined types, generators, decisions, contracts,
+# examples, properties, oracles, and package-level policy.
+
+module music.scale;
+
+# ------------------------------------------------------------------
+# Requirements
+# ------------------------------------------------------------------
+
+req REQ-1: "Notes in range";
+req REQ-2: "Snap result in scale";
+req REQ-3: "Tie-break rule";
+
+# ------------------------------------------------------------------
+# Types
+# ------------------------------------------------------------------
+
+# A MIDI pitch class constrained to 1..12.
+type MidiNote = Int refine (1 <= self and self <= 12);
+
+# A set of notes forming a musical scale.
+type Scale = Set<MidiNote>;
+
+# Error domain for bad input.
+error SnapError {
+  EmptyScale: "scale must not be empty";
+};
+
+# ------------------------------------------------------------------
+# Generators (for property testing / fuzzing)
+# ------------------------------------------------------------------
+
+gen MidiNoteGen { range: 1..12; };
+gen ScaleGen    { elements: MidiNoteGen; len: 1..12; };
+
+# ------------------------------------------------------------------
+# Decisions (explicit ambiguity resolution)
+# ------------------------------------------------------------------
+
+decision [REQ-3] tie_break:
+  when:   "equal distance to two notes";
+  choose: "smaller note";
+
+# ------------------------------------------------------------------
+# Function spec: snap a note to the nearest note in a scale
+# ------------------------------------------------------------------
+
+fn snap_to_scale @id("music.snap.v1") @compat(stable_semantics)
+  (note: MidiNote, scale: Scale) -> MidiNote
+{
+  requires [REQ-2] {
+    scale_is_nonempty(scale);
+  }
+
+  ensures [REQ-2] {
+    set_contains(scale, result);
+  }
+
+  examples [REQ-3] {
+    "edge wraps": snap_to_scale(12, {1, 5, 8}) == 1;
+    "exact hit":  snap_to_scale(1,  {1, 5, 8}) == 1;
+  }
+
+  notes {
+    "Uses modular distance (mod 12) to measure pitch proximity.";
+  }
+};
+
+# ------------------------------------------------------------------
+# Property: the result is always in the scale
+# ------------------------------------------------------------------
+
+prop [REQ-2] snap_in_scale:
+  forall n: MidiNote from MidiNoteGen
+  forall s: Scale from ScaleGen
+  set_contains(s, snap_to_scale(n, s));
+
+# ------------------------------------------------------------------
+# Oracle: reference implementation for differential testing
+# ------------------------------------------------------------------
+
+oracle music.scale.snap_to_scale: reference;
+
+# ------------------------------------------------------------------
+# Policy: this package is pure — no I/O allowed
+# ------------------------------------------------------------------
+
+policy {
+  deny Net;
+  deterministic;
+};
