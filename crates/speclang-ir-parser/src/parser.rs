@@ -689,4 +689,108 @@ mod tests {
         let ret_ty = &module.functions[0].return_type;
         assert!(matches!(ret_ty, speclang_ir::Type::Ref(_)));
     }
+
+    #[test]
+    fn test_parse_req_tag_annotation() {
+        let input = r#"module test {
+            fn f(x: i32) -> i32
+            @id "test.f.v1"
+            @req_tag "REQ-001" {
+                return x;
+            }
+        }"#;
+        let module = parse_module(input).unwrap();
+        assert_eq!(module.functions.len(), 1);
+        let has_req_tag = module.functions[0].annotations.iter().any(|a| {
+            matches!(a, speclang_ir::module::Annotation::ReqTag(t) if t == "REQ-001")
+        });
+        assert!(has_req_tag);
+    }
+
+    /// Round-trip: parse → print → re-parse → compare
+    fn assert_roundtrip(input: &str) {
+        let module1 = parse_module(input).unwrap();
+        let printed = crate::print_module(&module1);
+        let module2 = parse_module(&printed).unwrap_or_else(|e| {
+            panic!("Round-trip re-parse failed:\n{e}\n\nPrinted:\n{printed}");
+        });
+        // Compare key structural properties
+        assert_eq!(module1.name, module2.name, "module name mismatch");
+        assert_eq!(module1.type_defs.len(), module2.type_defs.len(), "type def count mismatch");
+        assert_eq!(module1.cap_defs.len(), module2.cap_defs.len(), "cap def count mismatch");
+        assert_eq!(module1.functions.len(), module2.functions.len(), "function count mismatch");
+        assert_eq!(module1.externs.len(), module2.externs.len(), "extern count mismatch");
+        for (f1, f2) in module1.functions.iter().zip(module2.functions.iter()) {
+            assert_eq!(f1.name, f2.name, "function name mismatch");
+            assert_eq!(f1.params.len(), f2.params.len(), "param count mismatch for {}", f1.name);
+            assert_eq!(f1.effects.len(), f2.effects.len(), "effect count mismatch for {}", f1.name);
+            assert_eq!(f1.annotations.len(), f2.annotations.len(), "annotation count mismatch for {}", f1.name);
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_empty_module() {
+        assert_roundtrip("module test.empty {}");
+    }
+
+    #[test]
+    fn test_roundtrip_types() {
+        assert_roundtrip(r#"module test {
+            type MyInt = i32;
+            type Name = string;
+        }"#);
+    }
+
+    #[test]
+    fn test_roundtrip_capabilities() {
+        assert_roundtrip(r#"module test {
+            cap Net(host: string);
+            cap Clock;
+        }"#);
+    }
+
+    #[test]
+    fn test_roundtrip_pure_function() {
+        assert_roundtrip(r#"module test {
+            fn add(x: i32, y: i32) -> i32 {
+                return x;
+            }
+        }"#);
+    }
+
+    #[test]
+    fn test_roundtrip_effectful_function() {
+        assert_roundtrip(r#"module test {
+            fn fetch(net: Net, url: string) -> string effects(Net) {
+                return url;
+            }
+        }"#);
+    }
+
+    #[test]
+    fn test_roundtrip_annotated_function() {
+        assert_roundtrip(r#"module test {
+            fn f(x: i32) -> i32
+            @id "test.f.v1"
+            @req_tag "REQ-001" {
+                return x;
+            }
+        }"#);
+    }
+
+    #[test]
+    fn test_roundtrip_complex_module() {
+        assert_roundtrip(r#"module music.scale {
+            type Midi = i32;
+            cap Net(host: string);
+            cap Clock;
+            fn snap(note: i32, scale: i32) -> i32
+            @id "music.snap.v1" {
+                return note;
+            }
+            fn fetch(net: Net, url: string) -> string effects(Net) {
+                return url;
+            }
+        }"#);
+    }
 }

@@ -121,7 +121,7 @@ pub struct FnSpecDecl {
     pub blocks: Vec<FnBlock>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompatKind {
     StableCall,
     StableSemantics,
@@ -205,83 +205,80 @@ pub struct ReqDecl {
 // Decision blocks
 // ---------------------------------------------------------------------------
 
-/// Decision block: `decision "ambiguity description" { ... }`
+/// Decision declaration: `decision [REQ-3] tie_break: when: "..."; choose: "...";`
 /// Must be resolved before compilation.
 #[derive(Debug, Clone)]
 pub struct DecisionDecl {
-    pub label: String,
-    pub options: Vec<DecisionOption>,
-    pub chosen: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DecisionOption {
+    pub req_tags: Vec<String>,
     pub name: String,
-    pub description: String,
+    pub when: String,
+    pub choose: String,
 }
 
 // ---------------------------------------------------------------------------
 // Generator blocks
 // ---------------------------------------------------------------------------
 
-/// Generator declaration: `gen MidiNoteGen -> MidiNote { ... }`
+/// Generator declaration: `gen MidiNoteGen { range: 1..12; };`
 #[derive(Debug, Clone)]
 pub struct GenDecl {
     pub name: String,
-    pub output_type: TypeRef,
-    pub body: Vec<GenStrategy>,
+    pub fields: Vec<GenField>,
 }
 
-/// A generator strategy (e.g., `int_range(0, 127)`, `one_of(...)`, `weighted(...)`)
+/// A key-value field in a generator: `charset: "a-z0-9";`
 #[derive(Debug, Clone)]
-pub enum GenStrategy {
-    IntRange { lo: SplExpr, hi: SplExpr },
-    OneOf(Vec<SplExpr>),
-    Weighted(Vec<(SplExpr, SplExpr)>),
-    Map { inner: Box<GenStrategy>, func: String },
-    Filter { inner: Box<GenStrategy>, pred: String },
-    Custom(SplExpr),
+pub struct GenField {
+    pub key: String,
+    pub value: GenValue,
+}
+
+/// A generator field value.
+#[derive(Debug, Clone)]
+pub enum GenValue {
+    StringLit(String),
+    IntRange(i64, i64),
+    Ident(String),
+    List(Vec<GenValue>),
 }
 
 // ---------------------------------------------------------------------------
 // Property blocks
 // ---------------------------------------------------------------------------
 
-/// Property block: `prop "name" { forall x: Gen, y: Gen { body } }`
+/// Property declaration: `prop [REQ-2] snap_in_scale: forall n: MidiNote from MidiNoteGen ...;`
 #[derive(Debug, Clone)]
 pub struct PropDecl {
+    pub req_tags: Vec<String>,
     pub name: String,
-    pub bindings: Vec<PropBinding>,
+    pub quantifiers: Vec<PropQuantifier>,
     pub body: RefineExpr,
-    pub shrink_hints: Vec<ShrinkHint>,
 }
 
-/// A forall binding in a prop: `x: MyGen`
+/// A forall quantifier in a prop: `forall n: MidiNote from MidiNoteGen`
 #[derive(Debug, Clone)]
-pub struct PropBinding {
+pub struct PropQuantifier {
     pub name: String,
-    pub generator: String,
-}
-
-/// Shrinking hint for a prop binding.
-#[derive(Debug, Clone)]
-pub enum ShrinkHint {
-    MinTowards { binding: String, target: SplExpr },
-    DropElements { binding: String },
-    Custom { binding: String, strategy: String },
+    pub ty: TypeRef,
+    pub generator: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
 // Oracle blocks
 // ---------------------------------------------------------------------------
 
-/// Oracle declaration: `oracle "name" { reference: f_ref, optimized: f_opt }`
+/// Oracle declaration: `oracle music.scale.snap_to_scale: reference;`
 #[derive(Debug, Clone)]
 pub struct OracleDecl {
-    pub name: String,
-    pub reference_fn: String,
-    pub optimized_fn: String,
-    pub generator: Option<String>,
+    pub name: QualifiedName,
+    pub kind: OracleKind,
+}
+
+/// Oracle kind: reference or optimized implementation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OracleKind {
+    Reference,
+    Optimized,
 }
 
 // ---------------------------------------------------------------------------
