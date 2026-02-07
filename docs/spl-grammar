@@ -19,6 +19,12 @@ ModuleItem     := ModuleDecl
                | ErrorDecl
                | FnSpecDecl
                | LawDecl
+               | ReqDecl
+               | DecisionDecl
+               | GenDecl
+               | PropDecl
+               | OracleDecl
+               | PolicyDecl
                ;
 
 ModuleDecl     := "module" QualifiedName ";" ;
@@ -110,8 +116,8 @@ FnBlock        := RequiresBlock
                | NotesBlock
                ;
 
-RequiresBlock  := "requires" BlockOfExpr ;
-EnsuresBlock   := "ensures"  BlockOfExpr ;
+RequiresBlock  := "requires" [ ReqTag ] BlockOfExpr ;
+EnsuresBlock   := "ensures"  [ ReqTag ] BlockOfExpr ;
 
 EffectsBlock   := "effects" "{" [ EffectList ] "}" ;
 EffectList     := EffectItem { "," EffectItem } ;
@@ -125,7 +131,7 @@ PerfItem       := PerfKey ":" PerfValue ";" ;
 PerfKey        := Ident ;
 PerfValue      := String | IntLit | QualifiedName ;
 
-ExamplesBlock  := "examples" "{" { ExampleItem } "}" ;
+ExamplesBlock  := "examples" [ ReqTag ] "{" { ExampleItem } "}" ;
 ExampleItem    := String ":" ExampleExpr ";" ;
 ExampleExpr    := Expr "==" Expr ;
 
@@ -142,20 +148,123 @@ LawDecl        := "law" Ident ":" RefineExpr ";" ;
 ```
 
 You’ll notice SPL uses the same RefineExpr grammar for invariants/requirements/postconditions; it stays readable and small.
+## Requirement declarations and traceability tags
 
+Requirement IDs provide traceability from prose requirements to SPL clauses to generated tests.
+
+```
+ReqDecl        := "req" ReqId ":" String ";" ;
+ReqId          := /REQ-[A-Za-z0-9_-]+/ ;
+
+# Requirement tags can appear on requires/ensures/examples/props:
+ReqTag         := "[" ReqId { "," ReqId } "]" ;
+```
+
+Requires/ensures/examples blocks can be tagged with `[REQ-…]` for traceability:
+- `requires [REQ-12] { ... }` — links a precondition to a requirement
+- `ensures [REQ-12] { ... }` — links a postcondition to a requirement
+- `examples [REQ-13] { ... }` — links examples to a requirement
+
+Tooling outputs:
+- Which REQs are covered by examples/props
+- Which are only prose (warning)
+- Which code paths map to which REQs
+
+## Decision declarations (must be resolved)
+
+Decisions capture explicit tie-breakers and ambiguity resolutions. The compiler refuses to compile if any decision is unresolved.
+
+```
+DecisionDecl   := "decision" [ ReqTag ] Ident ":"
+                  "when" ":" String ";"
+                  "choose" ":" String ";"
+                  ;
+```
+
+## Input generators (for property testing & fuzzing)
+
+Generators define input domains for property testing and fuzz harness generation. They replace writing thousands of manual test cases.
+
+```
+GenDecl        := "gen" Ident "{" { GenField } "}" ";" ;
+GenField       := GenKey ":" GenValue ";" ;
+GenKey         := "charset" | "len" | "range" | "format" | "oneof" | "elements" | Ident ;
+GenValue       := String | IntRange | Ident | "[" GenValueList "]" ;
+GenValueList   := GenValue { "," GenValue } ;
+IntRange       := IntLit ".." IntLit ;
+```
+
+## Property declarations (forall with shrinking)
+
+Props are full property-based test declarations using `forall` quantification. They generate property tests and can include shrinking hints.
+
+```
+PropDecl       := "prop" [ ReqTag ] Ident ":"
+                  { PropQuantifier }
+                  PropBody ";" ;
+
+PropQuantifier := "forall" Ident ":" TypeRef [ "from" Ident ] ;
+PropBody       := RefineExpr ;
+```
+
+The `from` clause references a `gen` declaration for the domain. If omitted, the type's default generator is used.
+
+## Oracle declarations (reference/optimized linkage)
+
+Oracles allow marking a function as having a reference implementation. The agent first produces a simple correct reference, then an optimized version; differential tests run between them.
+
+```
+OracleDecl     := "oracle" QualifiedName ":" OracleKind ";" ;
+OracleKind     := "reference" | "optimized" ;
+```
+
+## Package-level policy
+
+Policy declarations restrict what effects/capabilities modules may use. They serve as acceptance gates ensuring the agent doesn't perform unexpected I/O.
+
+```
+PolicyDecl     := "policy" "{" { PolicyRule } "}" ";" ;
+PolicyRule     := PolicyAllow | PolicyDeny | PolicyDeterminism ;
+PolicyAllow    := "allow" Ident [ "(" PolicyConstraint ")" ] ";" ;
+PolicyDeny     := "deny" Ident ";" ;
+PolicyDeterminism := "deterministic" ";" ;
+PolicyConstraint  := Ident ":" PolicyValue { "," Ident ":" PolicyValue } ;
+PolicyValue       := String | "[" StringList "]" ;
+StringList        := String { "," String } ;
+```
 
 ## Example
 
 ```
 module music.scale;
 
+# Requirement traceability
+req REQ-1: "Notes must be in range 1..12";
+req REQ-2: "Snap result must be in the scale";
+req REQ-3: "Tie-break chooses smaller numeric note";
+
 type MidiNote = Int refine (1 <= self and self <= 12);
+
+# Input generator for property testing
+gen MidiNoteGen {
+  range: 1..12;
+};
+
+gen ScaleGen {
+  elements: MidiNoteGen;
+  len: 1..12;
+};
+
+# Explicit decision for tie-break ambiguity
+decision [REQ-3] tie_break:
+  when: "multiple notes at equal minimum distance";
+  choose: "the smaller numeric note";
 
 fn snap_to_scale @id("music.snap.v1") @compat(stable_semantics)
   (note: MidiNote, scale: Set<MidiNote>) -> MidiNote
 {
-  requires { scale_is_nonempty(scale); }
-  ensures  { set_contains(scale, result); }
+  requires [REQ-2] { scale_is_nonempty(scale); }
+  ensures  [REQ-2] { set_contains(scale, result); }
   notes {
     "Distance is circular over 12. Tie-break chooses smaller numeric note.";
   }
@@ -163,10 +272,32 @@ fn snap_to_scale @id("music.snap.v1") @compat(stable_semantics)
     time: "O(|scale|)";
     alloc: "none";
   }
-  examples {
+  examples [REQ-3] {
     "octave edge goes to 1, not 0": snap_to_scale(12, {1,5,8}) == 1;
     "already in scale":            snap_to_scale(1,  {1,5,8}) == 1;
   }
+};
+
+# Property with forall quantification
+prop [REQ-2] snap_in_scale:
+  forall n: MidiNote from MidiNoteGen
+  forall s: Set<MidiNote> from ScaleGen
+  set_contains(s, snap_to_scale(n, s));
+
+# Idempotence property
+prop snap_idempotent:
+  forall n: MidiNote from MidiNoteGen
+  forall s: Set<MidiNote> from ScaleGen
+  snap_to_scale(snap_to_scale(n, s), s) == snap_to_scale(n, s);
+
+# Oracle: mark the reference implementation
+oracle music.scale.snap_to_scale: reference;
+
+# Package-level policy
+policy {
+  deny Net;
+  deny FileWrite;
+  deterministic;
 };
 ```
 

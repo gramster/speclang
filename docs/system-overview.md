@@ -40,6 +40,12 @@ SPL constructs (v0)
 	•	law / prop (properties; optional)
 	•	examples (executable examples)
 	•	perf (constraints; some enforceable, some benchmark-checked)
+	•	req (requirement declarations with traceability IDs)
+	•	decision (explicit ambiguity resolutions; must be resolved to compile)
+	•	gen (input generators for property testing & fuzzing)
+	•	prop (forall-quantified properties with shrinking)
+	•	oracle (reference/optimized implementation linkage)
+	•	policy (package-level capability restrictions & determinism)
 
 SPL semantics (important bits)
 	•	No loops, no mutation, no I/O. Purely declarative.
@@ -47,6 +53,11 @@ SPL semantics (important bits)
 	•	runtime checks (debug/sampled/always)
 	•	property tests and fuzz harnesses
 	•	proof obligations (optional later)
+	•	Requirement traceability: REQ tags on contracts/examples produce coverage reports
+	•	Decision blocks enforce that ambiguities are explicitly resolved before compilation
+	•	Generators and props compile to property-based test and fuzz harnesses
+	•	Oracles enable differential testing between reference and optimized implementations
+	•	Policy blocks restrict capabilities at the package level (acceptance gate for agents)
 
 Effects (capabilities)
 
@@ -54,7 +65,8 @@ Functions declare effects they are allowed to perform:
 	•	effects { Net(host(url)), FileRead(path), Clock }
 	•	default is pure (no effects)
 
-The package file can restrict what modules may ever request.
+The package file (and `policy` blocks) can restrict what modules may ever request.
+Policy can also enforce determinism (deny Clock/Rng unless explicitly permitted).
 
 ⸻
 

@@ -239,5 +239,26 @@ Core IR itself does not assume ABI; backend defines ABI mapping.
 
 - SPL `examples` become generated test IR functions.
 - SPL `ensures/requires` become `assert` blocks (per contract policy) plus metadata.
+- SPL `req` declarations become contract metadata with traceability IDs (`@req_tag "REQ-001"`).
+  Contracts and examples tagged with `[REQ-…]` carry tags as metadata so coverage reports
+  can trace which requirements are exercised by tests.
+- SPL `decision` blocks are resolved at compile time. The compiler verifies that every
+  `decision` has an explicit resolution; unresolved decisions are a hard compile error.
+  The chosen branch is lowered directly; the block itself produces no runtime IR.
+- SPL `gen` blocks lower to generator functions in the test harness module. Each generator
+  becomes an IR function returning an iterator/stream of values of the declared type.
+  Built-in strategies (e.g., `int_range`, `one_of`, `weighted`) map to stdlib generator
+  combinators.
+- SPL `prop` blocks lower to property-test IR functions: the `forall` bindings drive
+  generator invocation, the body becomes the test predicate, and shrinking hints
+  (`@shrink`) become metadata for the test harness. Each prop generates a test function
+  that runs `N` random trials (configurable via policy).
+- SPL `oracle` blocks lower to differential-test IR functions that call both the
+  `reference` and `optimized` implementations, compare results, and assert equivalence.
+  Oracle tests are generated alongside property tests.
+- SPL `policy` blocks lower to static capability checks performed during IR verification.
+  The verifier ensures no function in the module transitively requires a capability not
+  listed in the policy's `allow` set. `deny Clock, Rng` enforces determinism.
+  Policy violations are compile errors, not runtime checks.
 
 ---

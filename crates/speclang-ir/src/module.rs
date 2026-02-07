@@ -20,6 +20,8 @@ pub enum Annotation {
     Id(String),
     /// Compatibility annotation.
     Compat(Compat),
+    /// Requirement traceability tag: `@req_tag "REQ-001"`.
+    ReqTag(String),
 }
 
 /// Compatibility level for stable IDs.

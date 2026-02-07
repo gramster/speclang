@@ -127,16 +127,27 @@ Core IR: Contracts as first-class metadata (enforced by tooling)
 Contracts compile to:
 	1.	generated check blocks (debug / always / sampled)
 	2.	generated property tests
-	3.	optional proof obligations (later)
+	3.	generated differential tests (oracle)
+	4.	requirement coverage metadata (req tags)
+	5.	optional proof obligations (later)
 
 In Core IR, represent contracts as attached annotations plus optional explicit checks.
 
 Example:
 	•	Function has metadata: requires, ensures
+	•	Contracts may carry `@req_tag "REQ-001"` for traceability
 	•	Compiler may insert checks at entry/exit.
 
 So IR has:
 	•	@requires pred_expr
 	•	@ensures pred_expr
+	•	@req_tag "REQ-xxx" (traceability to SPL req declarations)
 …and/or:
 	•	assert(pred_expr, "msg") statements inserted by a lowerer.
+
+### Additional lowering targets (from new SPL constructs)
+	•	`gen` blocks → generator functions in test harness module
+	•	`prop` blocks → property-test functions with forall-driven generation
+	•	`oracle` blocks → differential-test functions (reference vs optimized)
+	•	`decision` blocks → compile-time resolution; no runtime IR emitted
+	•	`policy` blocks → static capability verification constraints (compile-time)

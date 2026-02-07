@@ -298,6 +298,98 @@ Notes:
 To support SPL v0, stdlib must also provide (or the compiler must synthesize) predicates used in contracts, e.g.:
 	•	set_contains → collections.set.contains
 	•	len(x) → appropriate len function for the type
+
+---
+
+## 10. testing (property-test and generator support)
+
+This module provides runtime support for SPL `gen`, `prop`, and `oracle` constructs.
+
+### 10.1 Generators
+
+Generators produce streams of values for property testing and fuzzing.
+
+```
+type Gen[T]    # opaque generator producing values of type T
+type Seed      # opaque PRNG seed
+
+fn gen.int_range(lo: int, hi: int) -> Gen[int]
+fn gen.one_of[T](items: slice[T]) -> Gen[T]
+fn gen.weighted[T](items: slice[(T, u64)]) -> Gen[T]
+fn gen.bool() -> Gen[bool]
+fn gen.string_ascii(min_len: u64, max_len: u64) -> Gen[String]
+fn gen.string_utf8(min_len: u64, max_len: u64) -> Gen[String]
+fn gen.bytes(min_len: u64, max_len: u64) -> Gen[Bytes]
+fn gen.map[A,B](g: Gen[A], f: fn(A) -> B) -> Gen[B]
+fn gen.filter[T](g: Gen[T], pred: fn(ref[T]) -> bool) -> Gen[T]
+fn gen.pair[A,B](a: Gen[A], b: Gen[B]) -> Gen[(A,B)]
+fn gen.vec_of[T](g: Gen[T], min_len: u64, max_len: u64) -> Gen[Vec[T]]
+
+fn gen.sample[T](g: Gen[T], seed: Seed) -> T
+fn gen.shrink[T](g: Gen[T], value: T) -> Gen[T]    # produce smaller counterexamples
+```
+
+### 10.2 Property-test runner
+
+```
+type PropResult = enum { Pass, Fail(String), Skip }
+type ShrinkHint = enum { None, MinTowards(int), DropElements, Custom(String) }
+
+fn prop.run(
+    name: ref[String],
+    trials: u64,
+    seed: Seed,
+    test_fn: fn(Seed) -> PropResult
+) -> PropResult
+
+fn prop.report_failure(
+    name: ref[String],
+    counterexample: ref[String],
+    req_tags: slice[String]
+) -> unit
+```
+
+### 10.3 Oracle (differential testing)
+
+```
+fn oracle.compare[T](
+    name: ref[String],
+    reference_fn: fn() -> T,
+    optimized_fn: fn() -> T,
+    eq_fn: fn(ref[T], ref[T]) -> bool
+) -> PropResult
+```
+
+### 10.4 Requirement coverage
+
+```
+type ReqCoverage
+
+fn req.tag_exercised(tag: ref[String]) -> unit          # mark a req tag as covered
+fn req.coverage_report(r: mem.region) -> Vec[String]    # list of exercised tags
+```
+
+---
+
+## 11. policy (static verification support)
+
+Policy checking is performed at compile time by the IR verifier, not at runtime.
+This section documents the semantic model for stdlib reference.
+
+```
+type PolicyRule = enum {
+    Allow(String),      # capability name
+    Deny(String),       # capability name
+    Deterministic       # equivalent to deny Clock, Rng
+}
+
+type PackagePolicy = struct {
+    rules: Vec[PolicyRule]
+}
+```
+
+The compiler reads `policy` blocks from SPL, builds a `PackagePolicy`, and verifies
+that no function in the module transitively requires a denied capability.
 	•	is_ok / unwrap_ok → core.result.*
 
 The SPL compiler owns the mapping from surface predicates to concrete stdlib functions.

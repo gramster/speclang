@@ -146,6 +146,11 @@ impl Printer {
                     self.write_indent();
                     self.write(&format!("@compat {:?}", c));
                 }
+                Annotation::ReqTag(tag) => {
+                    self.write("\n");
+                    self.write_indent();
+                    self.write(&format!("@req_tag \"{tag}\""));
+                }
             }
         }
         self.write(" ");

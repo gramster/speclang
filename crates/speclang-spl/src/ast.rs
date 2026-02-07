@@ -21,6 +21,12 @@ pub enum ModuleItem {
     Error(ErrorDecl),
     FnSpec(FnSpecDecl),
     Law(LawDecl),
+    Req(ReqDecl),
+    Decision(DecisionDecl),
+    Gen(GenDecl),
+    Prop(PropDecl),
+    Oracle(OracleDecl),
+    Policy(PolicyDecl),
 }
 
 /// Module declaration: `module music.scale;`
@@ -131,12 +137,24 @@ pub struct Param {
 /// Blocks within a function spec.
 #[derive(Debug, Clone)]
 pub enum FnBlock {
-    Requires(Vec<RefineExpr>),
-    Ensures(Vec<RefineExpr>),
+    /// `requires [REQ-001] { ... }` — optional req tags for traceability.
+    Requires {
+        req_tags: Vec<String>,
+        conditions: Vec<RefineExpr>,
+    },
+    /// `ensures [REQ-002] { ... }` — optional req tags for traceability.
+    Ensures {
+        req_tags: Vec<String>,
+        conditions: Vec<RefineExpr>,
+    },
     Effects(Vec<EffectItem>),
     Raises(Vec<RaisesItem>),
     Perf(Vec<PerfItem>),
-    Examples(Vec<ExampleItem>),
+    /// `examples [REQ-003] { ... }` — optional req tags for traceability.
+    Examples {
+        req_tags: Vec<String>,
+        items: Vec<ExampleItem>,
+    },
     Notes(Vec<String>),
 }
 
@@ -170,6 +188,118 @@ pub struct ExampleItem {
 pub struct LawDecl {
     pub name: String,
     pub expr: RefineExpr,
+}
+
+// ---------------------------------------------------------------------------
+// Requirement declarations
+// ---------------------------------------------------------------------------
+
+/// Requirement declaration: `req REQ-001 "Description of the requirement";`
+#[derive(Debug, Clone)]
+pub struct ReqDecl {
+    pub tag: String,
+    pub description: String,
+}
+
+// ---------------------------------------------------------------------------
+// Decision blocks
+// ---------------------------------------------------------------------------
+
+/// Decision block: `decision "ambiguity description" { ... }`
+/// Must be resolved before compilation.
+#[derive(Debug, Clone)]
+pub struct DecisionDecl {
+    pub label: String,
+    pub options: Vec<DecisionOption>,
+    pub chosen: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DecisionOption {
+    pub name: String,
+    pub description: String,
+}
+
+// ---------------------------------------------------------------------------
+// Generator blocks
+// ---------------------------------------------------------------------------
+
+/// Generator declaration: `gen MidiNoteGen -> MidiNote { ... }`
+#[derive(Debug, Clone)]
+pub struct GenDecl {
+    pub name: String,
+    pub output_type: TypeRef,
+    pub body: Vec<GenStrategy>,
+}
+
+/// A generator strategy (e.g., `int_range(0, 127)`, `one_of(...)`, `weighted(...)`)
+#[derive(Debug, Clone)]
+pub enum GenStrategy {
+    IntRange { lo: SplExpr, hi: SplExpr },
+    OneOf(Vec<SplExpr>),
+    Weighted(Vec<(SplExpr, SplExpr)>),
+    Map { inner: Box<GenStrategy>, func: String },
+    Filter { inner: Box<GenStrategy>, pred: String },
+    Custom(SplExpr),
+}
+
+// ---------------------------------------------------------------------------
+// Property blocks
+// ---------------------------------------------------------------------------
+
+/// Property block: `prop "name" { forall x: Gen, y: Gen { body } }`
+#[derive(Debug, Clone)]
+pub struct PropDecl {
+    pub name: String,
+    pub bindings: Vec<PropBinding>,
+    pub body: RefineExpr,
+    pub shrink_hints: Vec<ShrinkHint>,
+}
+
+/// A forall binding in a prop: `x: MyGen`
+#[derive(Debug, Clone)]
+pub struct PropBinding {
+    pub name: String,
+    pub generator: String,
+}
+
+/// Shrinking hint for a prop binding.
+#[derive(Debug, Clone)]
+pub enum ShrinkHint {
+    MinTowards { binding: String, target: SplExpr },
+    DropElements { binding: String },
+    Custom { binding: String, strategy: String },
+}
+
+// ---------------------------------------------------------------------------
+// Oracle blocks
+// ---------------------------------------------------------------------------
+
+/// Oracle declaration: `oracle "name" { reference: f_ref, optimized: f_opt }`
+#[derive(Debug, Clone)]
+pub struct OracleDecl {
+    pub name: String,
+    pub reference_fn: String,
+    pub optimized_fn: String,
+    pub generator: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Policy blocks
+// ---------------------------------------------------------------------------
+
+/// Package-level policy block: `policy { allow Net; deny Clock, Rng; deterministic; }`
+#[derive(Debug, Clone)]
+pub struct PolicyDecl {
+    pub rules: Vec<PolicyRule>,
+}
+
+/// A single policy rule.
+#[derive(Debug, Clone)]
+pub enum PolicyRule {
+    Allow(Vec<String>),
+    Deny(Vec<String>),
+    Deterministic,
 }
 
 // ---------------------------------------------------------------------------

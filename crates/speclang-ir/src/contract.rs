@@ -31,6 +31,9 @@ pub struct Contract {
     pub predicate: Expr,
     /// Compilation policy for this contract.
     pub policy: ContractPolicy,
+    /// Requirement traceability tags (e.g., `["REQ-001", "REQ-002"]`).
+    /// These trace back to SPL `req` declarations and appear in coverage reports.
+    pub req_tags: Vec<String>,
 }
 
 /// The kind of contract.

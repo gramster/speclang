@@ -210,6 +210,13 @@ impl<'a> Parser<'a> {
                         annotations.push(speclang_ir::module::Annotation::Id(id));
                     }
                 }
+                "req_tag" => {
+                    if let TokenKind::StringLiteral(tag) = self.peek().clone() {
+                        let tag = tag.clone();
+                        self.advance();
+                        annotations.push(speclang_ir::module::Annotation::ReqTag(tag));
+                    }
+                }
                 "requires" | "ensures" => {
                     // TODO: parse predicate expressions
                     // For now skip to semicolon
