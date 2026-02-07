@@ -12,7 +12,9 @@
 //! - Exhaustive pattern matching → `exhaustiveness`
 
 pub mod capabilities;
+pub mod contract_pass;
 pub mod exhaustiveness;
 pub mod ownership;
+pub mod proptest;
 pub mod regions;
 pub mod typecheck;

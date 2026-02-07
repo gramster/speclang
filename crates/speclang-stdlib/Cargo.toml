@@ -1,0 +1,10 @@
+[package]
+name = "speclang-stdlib"
+description = "Standard library modules for the speclang compiler (Core IR definitions)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+
+[dev-dependencies]

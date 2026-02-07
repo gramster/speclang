@@ -104,6 +104,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "speclang-stdlib"
+version = "0.1.0"
+dependencies = [
+ "speclang-ir",
+]
+
+[[package]]
 name = "speclang-verify"
 version = "0.1.0"
 dependencies = [

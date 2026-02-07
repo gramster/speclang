@@ -6,6 +6,7 @@ members = [
     "crates/speclang-lower",
     "crates/speclang-verify",
     "crates/speclang-backend-rust",
+    "crates/speclang-stdlib",
     "crates/speclang-cli",
 ]
 resolver = "2"
@@ -23,6 +24,7 @@ speclang-spl = { path = "crates/speclang-spl" }
 speclang-lower = { path = "crates/speclang-lower" }
 speclang-verify = { path = "crates/speclang-verify" }
 speclang-backend-rust = { path = "crates/speclang-backend-rust" }
+speclang-stdlib = { path = "crates/speclang-stdlib" }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
