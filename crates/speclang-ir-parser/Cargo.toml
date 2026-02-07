@@ -1,0 +1,9 @@
+[package]
+name = "speclang-ir-parser"
+description = "Parser and pretty-printer for Core IR textual form"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+thiserror.workspace = true

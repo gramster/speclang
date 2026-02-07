@@ -1,0 +1,13 @@
+[package]
+name = "speclang-cli"
+description = "CLI compiler driver for speclang"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+speclang-ir-parser.workspace = true
+speclang-spl.workspace = true
+speclang-lower.workspace = true
+speclang-verify.workspace = true
+speclang-backend-rust.workspace = true

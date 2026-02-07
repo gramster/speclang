@@ -1,0 +1,13 @@
+[package]
+name = "speclang-ir"
+description = "Core IR types and AST for the speclang compiler"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]

@@ -1,0 +1,9 @@
+[package]
+name = "speclang-verify"
+description = "Core IR verifier (types, ownership, capabilities, exhaustiveness)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+thiserror.workspace = true

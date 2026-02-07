@@ -2,6 +2,9 @@
 node_modules/
 vendor/
 
+# Rust build outputs
+target/
+
 # Build outputs
 dist/
 build/
@@ -42,3 +45,8 @@ __pycache__/
 # Archives
 *.tar.gz
 *.zip
+
+
+# Added by cargo
+
+/target

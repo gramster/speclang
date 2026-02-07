@@ -1,0 +1,28 @@
+[workspace]
+members = [
+    "crates/speclang-ir",
+    "crates/speclang-ir-parser",
+    "crates/speclang-spl",
+    "crates/speclang-lower",
+    "crates/speclang-verify",
+    "crates/speclang-backend-rust",
+    "crates/speclang-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/gramster/speclang"
+
+[workspace.dependencies]
+speclang-ir = { path = "crates/speclang-ir" }
+speclang-ir-parser = { path = "crates/speclang-ir-parser" }
+speclang-spl = { path = "crates/speclang-spl" }
+speclang-lower = { path = "crates/speclang-lower" }
+speclang-verify = { path = "crates/speclang-verify" }
+speclang-backend-rust = { path = "crates/speclang-backend-rust" }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

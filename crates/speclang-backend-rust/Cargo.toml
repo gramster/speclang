@@ -1,0 +1,9 @@
+[package]
+name = "speclang-backend-rust"
+description = "Rust transpiler backend for Core IR"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "speclang-lower"
+description = "SPL-to-Core IR lowering"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+speclang-spl.workspace = true
+thiserror.workspace = true

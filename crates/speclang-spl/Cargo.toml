@@ -1,0 +1,9 @@
+[package]
+name = "speclang-spl"
+description = "SPL (Spec Layer) parser and type checker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true
+thiserror.workspace = true
