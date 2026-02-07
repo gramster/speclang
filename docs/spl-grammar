@@ -1,0 +1,172 @@
+# SPL grammar
+
+## Lexical
+	•	Identifiers: [A-Za-z_][A-Za-z0-9_]*
+	•	Strings: "..." (with escapes)
+	•	Integers: decimal or hex 0x...
+	•	Comments: # ... to end of line
+	•	Newlines separate statements; blocks use { ... }
+
+## Top-level
+
+```
+Program        := { ModuleItem } ;
+
+ModuleItem     := ModuleDecl
+               | ImportDecl
+               | CapabilityDecl
+               | TypeDecl
+               | ErrorDecl
+               | FnSpecDecl
+               | LawDecl
+               ;
+
+ModuleDecl     := "module" QualifiedName ";" ;
+
+ImportDecl     := "import" QualifiedName [ "as" Ident ] ";" ;
+
+QualifiedName  := Ident { "." Ident } ;
+Ident          := /[A-Za-z_][A-Za-z0-9_]*/ ;
+String         := /"([^"\\]|\\.)*"/ ;
+IntLit         := /0x[0-9A-Fa-f]+|[0-9]+/ ;
+```
+
+## Capabilities
+
+```
+CapabilityDecl := "capability" Ident "(" [ CapParams ] ")" ";" ;
+CapParams      := CapParam { "," CapParam } ;
+CapParam       := Ident ":" TypeRef ;
+```
+
+### Types
+
+```
+TypeDecl       := "type" Ident TypeBody ;
+TypeBody       := AliasType
+               | StructType
+               | EnumType
+               ;
+
+AliasType      := "=" TypeRef [ RefineClause ] ";" ;
+
+StructType     := "struct" "{" { FieldDecl } "}" [ InvariantBlock ] ";" ;
+FieldDecl      := Ident ":" TypeRef ";" ;
+
+EnumType       := "enum" "{" { VariantDecl } "}" ";" ;
+VariantDecl    := Ident [ "(" [ VariantFields ] ")" ] ";" ;
+VariantFields  := FieldType { "," FieldType } ;
+FieldType      := TypeRef ;
+
+TypeRef        := QualifiedName [ TypeArgs ] [ Nullability ] ;
+TypeArgs       := "<" TypeRef { "," TypeRef } ">" ;
+Nullability    := "?" ;
+
+RefineClause   := "refine" RefineExpr ;
+RefineExpr     := OrExpr ;
+OrExpr         := AndExpr { "or" AndExpr } ;
+AndExpr        := PredExpr { "and" PredExpr } ;
+PredExpr       := CompareExpr | "(" RefineExpr ")" | "not" PredExpr ;
+CompareExpr    := RefAtom (("=="|"!="|"<"|"<="|">"|">=") RefAtom)? ;
+RefAtom        := "self" | Ident | IntLit | String | CallExpr ;
+CallExpr       := Ident "(" [ ArgList ] ")" ;
+ArgList        := RefAtom { "," RefAtom } ;
+
+InvariantBlock := "invariant" "{" { RefineStmt } "}" ;
+RefineStmt     := RefineExpr ";" ;
+```
+
+## Errors
+
+```
+ErrorDecl      := "error" Ident "{" { ErrorVariant } "}" ";" ;
+ErrorVariant   := Ident ":" String ";" ;
+```
+
+## Function Specs
+
+```
+FnSpecDecl     := "fn" Ident FnHeader FnBlocks ";" ;
+
+FnHeader       := "@id" "(" String ")"
+                  [ "@compat" "(" CompatKind ")" ]
+                  "(" [ Params ] ")"
+                  "->" TypeRef
+                  ;
+
+CompatKind     := "stable_call" | "stable_semantics" | "unstable" ;
+
+Params         := Param { "," Param } ;
+Param          := Ident ":" TypeRef ;
+
+FnBlocks       := "{" { FnBlock } "}" ;
+
+FnBlock        := RequiresBlock
+               | EnsuresBlock
+               | EffectsBlock
+               | ErrorsBlock
+               | PerfBlock
+               | ExamplesBlock
+               | NotesBlock
+               ;
+
+RequiresBlock  := "requires" BlockOfExpr ;
+EnsuresBlock   := "ensures"  BlockOfExpr ;
+
+EffectsBlock   := "effects" "{" [ EffectList ] "}" ;
+EffectList     := EffectItem { "," EffectItem } ;
+EffectItem     := Ident "(" [ ArgList ] ")" | Ident ;
+
+ErrorsBlock    := "raises" "{" { RaisesItem } "}" ;
+RaisesItem     := QualifiedName [ ":" String ] ";" ;
+
+PerfBlock      := "perf" "{" { PerfItem } "}" ;
+PerfItem       := PerfKey ":" PerfValue ";" ;
+PerfKey        := Ident ;
+PerfValue      := String | IntLit | QualifiedName ;
+
+ExamplesBlock  := "examples" "{" { ExampleItem } "}" ;
+ExampleItem    := String ":" ExampleExpr ";" ;
+ExampleExpr    := Expr "==" Expr ;
+
+NotesBlock     := "notes" "{" { NoteItem } "}" ;
+NoteItem       := String ";" ;
+
+BlockOfExpr    := "{" { RefineExpr ";" } "}" ;
+```
+
+## Optional laws/properties
+
+```
+LawDecl        := "law" Ident ":" RefineExpr ";" ;
+```
+
+You’ll notice SPL uses the same RefineExpr grammar for invariants/requirements/postconditions; it stays readable and small.
+
+
+## Example
+
+```
+module music.scale;
+
+type MidiNote = Int refine (1 <= self and self <= 12);
+
+fn snap_to_scale @id("music.snap.v1") @compat(stable_semantics)
+  (note: MidiNote, scale: Set<MidiNote>) -> MidiNote
+{
+  requires { scale_is_nonempty(scale); }
+  ensures  { set_contains(scale, result); }
+  notes {
+    "Distance is circular over 12. Tie-break chooses smaller numeric note.";
+  }
+  perf {
+    time: "O(|scale|)";
+    alloc: "none";
+  }
+  examples {
+    "octave edge goes to 1, not 0": snap_to_scale(12, {1,5,8}) == 1;
+    "already in scale":            snap_to_scale(1,  {1,5,8}) == 1;
+  }
+};
+```
+
