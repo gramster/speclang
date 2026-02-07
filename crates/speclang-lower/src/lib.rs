@@ -6,3 +6,5 @@
 //! - Function specs → Core IR function signatures with contract metadata
 //! - Examples → generated test IR functions
 //! - Effects/capabilities → Core IR capability parameters
+
+pub mod lower;
