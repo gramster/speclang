@@ -1,6 +1,10 @@
 //! Rust transpiler backend for Core IR.
 //!
-//! Generates Rust source code from Core IR, mapping:
-//! - Regions/allocations → Rust allocator APIs (bumpalo/arena)
-//! - Capability tokens → Rust types threaded through call graph
-//! - Ownership/borrowing → Rust ownership model
+//! Generates idiomatic Rust source code from Core IR modules, mapping:
+//! - Core IR types → Rust types (struct, enum, tuple, primitives)
+//! - Ownership/regions → Rust `Box`, `&`, `&mut`, `&[T]`, `&mut [T]`
+//! - Capabilities → Rust trait-based capability tokens
+//! - Functions/contracts → Rust functions with `debug_assert!` guards
+//! - Control flow → Rust `if`, `match`, `let`, etc.
+
+pub mod codegen;

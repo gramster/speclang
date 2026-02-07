@@ -7,9 +7,12 @@
 //! - Named type resolution within the module
 //!
 //! Future phases (stubs):
-//! - Ownership and borrowing rules (Rust-like)
-//! - Region lifetime constraints
-//! - Capability threading (no hidden I/O)
-//! - Exhaustive pattern matching
+//! - Ownership and borrowing rules (Rust-like) → `ownership`
+//! - Capability threading (no hidden I/O) → `capabilities`
+//! - Exhaustive pattern matching → `exhaustiveness`
 
+pub mod capabilities;
+pub mod exhaustiveness;
+pub mod ownership;
+pub mod regions;
 pub mod typecheck;
