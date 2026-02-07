@@ -1,0 +1,39 @@
+// Implementation of calculator operations.
+//
+// Each function binds to its SPL spec by stable ID. The compiler
+// verifies that signatures match and generates test harnesses from
+// the spec's examples and contracts.
+
+module calculator;
+
+// --- Core arithmetic ---
+
+impl fn "calc.add.v1" add(a: int, b: int) -> int {
+    a + b
+}
+
+impl fn "calc.sub.v1" subtract(a: int, b: int) -> int {
+    a - b
+}
+
+impl fn "calc.mul.v1" multiply(a: int, b: int) -> int {
+    a * b
+}
+
+impl fn "calc.div.v1" divide(a: int, b: int) -> int {
+    a / b
+}
+
+// --- Factorial (recursive) ---
+
+impl fn "calc.fact.v1" factorial(n: int) -> int {
+    if n <= 1 { 1 }
+    else { n * factorial(n - 1) }
+}
+
+// --- Power (recursive) ---
+
+impl fn "calc.pow.v1" power(base: int, exp: int) -> int {
+    if exp == 0 { 1 }
+    else { base * power(base, exp - 1) }
+}

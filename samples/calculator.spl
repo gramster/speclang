@@ -1,0 +1,107 @@
+# A simple integer calculator.
+#
+# Demonstrates multiple functions with contracts, preconditions,
+# postconditions, examples, and requirement tracing.
+
+module calculator;
+
+# ------------------------------------------------------------------
+# Requirements
+# ------------------------------------------------------------------
+
+req REQ-1: "Arithmetic operations are correct";
+req REQ-2: "Division requires a non-zero divisor";
+req REQ-3: "Factorial input is non-negative";
+req REQ-4: "Power handles zero exponent";
+
+# ------------------------------------------------------------------
+# Core arithmetic
+# ------------------------------------------------------------------
+
+fn add @id("calc.add.v1") @compat(stable_call)
+  (a: Int, b: Int) -> Int
+{
+  examples [REQ-1] {
+    "positive":  add(2, 3) == 5;
+    "zeros":     add(0, 0) == 0;
+    "large":     add(1000, 2000) == 3000;
+  }
+};
+
+fn subtract @id("calc.sub.v1") @compat(stable_call)
+  (a: Int, b: Int) -> Int
+{
+  examples [REQ-1] {
+    "basic":    subtract(10, 4) == 6;
+    "same":     subtract(7, 7) == 0;
+  }
+};
+
+fn multiply @id("calc.mul.v1") @compat(stable_call)
+  (a: Int, b: Int) -> Int
+{
+  examples [REQ-1] {
+    "basic":    multiply(3, 4) == 12;
+    "by_zero":  multiply(5, 0) == 0;
+    "by_one":   multiply(7, 1) == 7;
+  }
+};
+
+fn divide @id("calc.div.v1") @compat(stable_call)
+  (a: Int, b: Int) -> Int
+{
+  requires [REQ-2] {
+    b != 0;
+  }
+
+  examples [REQ-1] {
+    "basic":     divide(10, 2) == 5;
+    "truncates": divide(7, 2) == 3;
+  }
+};
+
+# ------------------------------------------------------------------
+# Factorial
+# ------------------------------------------------------------------
+
+fn factorial @id("calc.fact.v1") @compat(stable_call)
+  (n: Int) -> Int
+{
+  requires [REQ-3] {
+    n >= 0;
+  }
+
+  ensures {
+    result >= 1;
+  }
+
+  examples {
+    "zero":   factorial(0) == 1;
+    "one":    factorial(1) == 1;
+    "five":   factorial(5) == 120;
+    "six":    factorial(6) == 720;
+  }
+};
+
+# ------------------------------------------------------------------
+# Power (exponentiation)
+# ------------------------------------------------------------------
+
+fn power @id("calc.pow.v1") @compat(stable_call)
+  (base: Int, exp: Int) -> Int
+{
+  requires [REQ-4] {
+    exp >= 0;
+  }
+
+  ensures [REQ-4] {
+    result >= 0 or base < 0;
+  }
+
+  examples {
+    "square":     power(3, 2) == 9;
+    "cube":       power(2, 3) == 8;
+    "zero_exp":   power(5, 0) == 1;
+    "one_exp":    power(7, 1) == 7;
+  }
+};

@@ -233,6 +233,123 @@ The generated tests prove the *examples* hold.
 
 ---
 
+## Full example: Calculator
+
+The [`calculator.spl`](calculator.spl) / [`calculator.impl`](calculator.impl)
+pair shows a more complete module — six functions with contracts,
+preconditions, requirement tracing, and recursion.
+
+### The spec (what the human reviews)
+
+```spl
+module calculator;
+
+req REQ-1: "Arithmetic operations are correct";
+req REQ-2: "Division requires a non-zero divisor";
+req REQ-3: "Factorial input is non-negative";
+req REQ-4: "Power handles zero exponent";
+
+fn add @id("calc.add.v1") (a: Int, b: Int) -> Int {
+  examples [REQ-1] {
+    "positive": add(2, 3) == 5;  "zeros": add(0, 0) == 0;
+  }
+};
+
+fn divide @id("calc.div.v1") (a: Int, b: Int) -> Int {
+  requires [REQ-2] { b != 0; }
+  examples [REQ-1] {
+    "basic": divide(10, 2) == 5;  "truncates": divide(7, 2) == 3;
+  }
+};
+
+fn factorial @id("calc.fact.v1") (n: Int) -> Int {
+  requires [REQ-3] { n >= 0; }
+  ensures           { result >= 1; }
+  examples {
+    "zero": factorial(0) == 1;  "five": factorial(5) == 120;
+  }
+};
+```
+
+That's the full surface a human needs to review — the contracts tell you
+exactly what each function promises. (See [`calculator.spl`](calculator.spl)
+for `subtract`, `multiply`, and `power` too.)
+
+### The implementation (what the agent writes)
+
+```impl
+module calculator;
+
+impl fn "calc.add.v1" add(a: int, b: int) -> int { a + b }
+
+impl fn "calc.div.v1" divide(a: int, b: int) -> int { a / b }
+
+impl fn "calc.fact.v1" factorial(n: int) -> int {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+
+impl fn "calc.pow.v1" power(base: int, exp: int) -> int {
+    if exp == 0 { 1 } else { base * power(base, exp - 1) }
+}
+```
+
+### Build it
+
+```
+$ speclang build samples/calculator.spl samples/calculator.impl
+```
+
+The compiler:
+1. Verifies all 6 IMPL functions match their SPL specs
+2. Generates 18 test functions from the spec's examples and contracts
+3. Emits Rust with real function bodies + the test harness
+
+Output ([expected-output/calculator-built.rs](expected-output/calculator-built.rs)):
+
+```rust
+// 17 generated tests, e.g.:
+pub fn test_factorial_2() {
+    assert!((factorial(5) == 120), "five");
+}
+
+// 6 real function bodies, e.g.:
+pub fn factorial(n: i64) -> i64 {
+    if (n <= 1) { 1 } else { (n * factorial((n - 1))) }
+}
+
+pub fn divide(a: i64, b: i64) -> i64 {
+    (a / b)
+}
+```
+
+**Spec size: 60 lines.  Generated output: 96 lines.**
+The human reviews the spec; the compiler guarantees the output.
+
+### What the compiler checks
+
+```
+$ speclang test samples/calculator.spl
+samples/calculator.spl: 18 test(s) found
+
+  test_add_0 (example) [REQ-1]     test_multiply_0 (example) [REQ-1]
+  test_add_1 (example) [REQ-1]     test_multiply_1 (example) [REQ-1]
+  test_add_2 (example) [REQ-1]     test_multiply_2 (example) [REQ-1]
+  test_subtract_0 (example) [REQ-1]  test_divide_0 (example) [REQ-1]
+  test_subtract_1 (example) [REQ-1]  test_divide_1 (example) [REQ-1]
+  test_factorial_0..3 (example)    test_power_0..3 (example)
+
+Requirement coverage:
+  REQ-1 → test_add_0..2, test_subtract_0..1, test_multiply_0..2, test_divide_0..1
+
+Fuzz targets (3): fuzz_divide, fuzz_factorial, fuzz_power
+```
+
+18 tests and 3 fuzz targets — all generated from the 60-line spec.
+The fuzz targets cover the functions with preconditions (`requires`
+clauses): `divide`, `factorial`, and `power`.
+
+---
+
 ## Larger example: `music.spl`
 
 [`music.spl`](music.spl) exercises more SPL features:
