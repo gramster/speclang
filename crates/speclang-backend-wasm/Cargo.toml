@@ -1,0 +1,8 @@
+[package]
+name = "speclang-backend-wasm"
+description = "WASM/WASI backend for speclang Core IR"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+speclang-ir.workspace = true

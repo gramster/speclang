@@ -6,6 +6,7 @@ members = [
     "crates/speclang-lower",
     "crates/speclang-verify",
     "crates/speclang-backend-rust",
+    "crates/speclang-backend-wasm",
     "crates/speclang-stdlib",
     "crates/speclang-impl",
     "crates/speclang-diagnostic",
@@ -28,6 +29,7 @@ speclang-spl = { path = "crates/speclang-spl" }
 speclang-lower = { path = "crates/speclang-lower" }
 speclang-verify = { path = "crates/speclang-verify" }
 speclang-backend-rust = { path = "crates/speclang-backend-rust" }
+speclang-backend-wasm = { path = "crates/speclang-backend-wasm" }
 speclang-stdlib = { path = "crates/speclang-stdlib" }
 speclang-impl = { path = "crates/speclang-impl" }
 speclang-diagnostic = { path = "crates/speclang-diagnostic" }

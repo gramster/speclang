@@ -96,10 +96,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "speclang-backend-wasm"
+version = "0.1.0"
+dependencies = [
+ "speclang-ir",
+]
+
+[[package]]
 name = "speclang-cli"
 version = "0.1.0"
 dependencies = [
  "speclang-backend-rust",
+ "speclang-backend-wasm",
  "speclang-diagnostic",
  "speclang-fmt",
  "speclang-impl",

@@ -7,6 +7,7 @@
 //! - `test`    — Extract and list test cases from a compiled module
 //! - `ir`      — Parse a Core IR file and pretty-print it
 //! - `fmt`     — Format an SPL or IMPL source file
+//! - `wasm`    — Compile SPL to WebAssembly (WAT format)
 
 use speclang_diagnostic::{Diagnostic, SourceFile, render_diagnostics};
 use std::env;
@@ -28,6 +29,7 @@ fn main() {
         "test" => cmd_test(&args[2..]),
         "ir" => cmd_ir(&args[2..]),
         "fmt" => cmd_fmt(&args[2..]),
+        "wasm" => cmd_wasm(&args[2..]),
         "version" | "--version" | "-V" => {
             println!("speclang v{}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -62,6 +64,7 @@ COMMANDS:
     test      Extract and list test cases from a compiled module
     ir        Parse a Core IR file and pretty-print it
     fmt       Format an SPL or IMPL source file
+    wasm      Compile SPL to WebAssembly (WAT format)
     version   Print version information
     help      Print this help message
 
@@ -299,6 +302,81 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
         }
         None => {
             print!("{}", rust_source);
+        }
+    }
+
+    Ok(())
+}
+
+// -----------------------------------------------------------------------
+// wasm — Compile to WebAssembly (WAT)
+// -----------------------------------------------------------------------
+
+fn cmd_wasm(args: &[String]) -> Result<(), i32> {
+    let (path, source) = read_input_smart(args)?;
+    let sf = SourceFile::new(&path, &source);
+    let output_path = find_output(args);
+    let mode_str = find_flag(args, "--mode").unwrap_or("debug");
+
+    let mode = match mode_str {
+        "debug" => speclang_verify::contract_pass::CompilationMode::Debug,
+        "release" => speclang_verify::contract_pass::CompilationMode::Release,
+        "sampled" => speclang_verify::contract_pass::CompilationMode::ReleaseSampled,
+        other => {
+            eprintln!(
+                "error: unknown compilation mode '{}' (expected debug/release/sampled)",
+                other
+            );
+            return Err(1);
+        }
+    };
+
+    // 1. Parse
+    let program = match speclang_spl::parser::parse_program(&source) {
+        Ok(p) => p,
+        Err(e) => return emit_diagnostics(&[spl_parse_diagnostic(&e)], &sf),
+    };
+
+    // 2. Resolve names
+    let resolved = match speclang_spl::resolve::resolve(&program) {
+        Ok(r) => r,
+        Err(errors) => return emit_diagnostics(&spl_resolve_diagnostics(&errors), &sf),
+    };
+
+    // 3. Type-check
+    if let Err(errors) = speclang_spl::typecheck::typecheck(&resolved) {
+        return emit_diagnostics(&spl_type_diagnostics(&errors), &sf);
+    }
+
+    // 4. Lower to Core IR
+    let ir_module = match speclang_lower::lower::lower(&resolved) {
+        Ok(m) => m,
+        Err(errors) => return emit_diagnostics(&lower_diagnostics(&errors), &sf),
+    };
+
+    // 5. Verify Core IR
+    if let Err(errors) = speclang_verify::typecheck::verify_module(&ir_module) {
+        return emit_diagnostics(&verify_diagnostics(&errors), &sf);
+    }
+
+    // 6. Insert contract assertions
+    let ir_with_contracts =
+        speclang_verify::contract_pass::insert_contracts(&ir_module, mode);
+
+    // 7. Generate WASM (WAT format)
+    let wat_source = speclang_backend_wasm::generate_wasm(&ir_with_contracts);
+
+    // Output
+    match output_path {
+        Some(out) => {
+            if let Err(e) = fs::write(out, &wat_source) {
+                eprintln!("error: cannot write '{}': {}", out, e);
+                return Err(1);
+            }
+            eprintln!("{}: compiled to {}", path, out);
+        }
+        None => {
+            print!("{}", wat_source);
         }
     }
 
