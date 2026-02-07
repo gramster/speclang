@@ -1,13 +1,29 @@
 //! speclang CLI compiler driver.
 //!
-//! Subcommands:
-//! - `parse`   — Parse an SPL file and print the AST
-//! - `check`   — Parse, resolve, and type-check an SPL file
-//! - `compile` — Full pipeline: parse → check → lower → verify → codegen
-//! - `test`    — Extract and list test cases from a compiled module
-//! - `ir`      — Parse a Core IR file and pretty-print it
-//! - `fmt`     — Format an SPL or IMPL source file
-//! - `wasm`    — Compile SPL to WebAssembly (WAT format)
+//! # Subcommands
+//!
+//! | Command | Description |
+//! |---------|-------------|
+//! | `parse <file.spl>` | Parse an SPL file and print the AST |
+//! | `check <file.spl>` | Parse, resolve, and type-check an SPL file |
+//! | `compile <file.spl>` | Full pipeline: parse → check → lower → verify → Rust codegen |
+//! | `wasm <file.spl>` | Full pipeline through to WebAssembly (WAT) codegen |
+//! | `test <file.spl>` | Extract and list test cases from a compiled module |
+//! | `ir <file.ir>` | Parse a Core IR file and pretty-print it |
+//! | `fmt <file>` | Format an SPL or IMPL source file |
+//!
+//! # Examples
+//!
+//! ```bash
+//! # Type-check a spec
+//! speclang check src/main.spl
+//!
+//! # Compile to Rust
+//! speclang compile src/main.spl
+//!
+//! # Compile to WebAssembly
+//! speclang wasm src/main.spl
+//! ```
 
 use speclang_diagnostic::{Diagnostic, SourceFile, render_diagnostics};
 use std::env;

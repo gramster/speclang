@@ -1,10 +1,20 @@
 //! SPL-to-Core IR lowering.
 //!
-//! Lowers SPL constructs to Core IR:
-//! - Type declarations → Core IR types
-//! - Refine types → newtype wrappers with checked constructors
-//! - Function specs → Core IR function signatures with contract metadata
-//! - Examples → generated test IR functions
-//! - Effects/capabilities → Core IR capability parameters
+//! Translates a type-checked SPL AST (from [`speclang_spl`]) into a
+//! Core IR [`speclang_ir::Module`].  The lowering is deterministic and
+//! preserves all contract and capability information so that downstream
+//! verification and backends have a complete picture.
+//!
+//! # Lowering rules
+//!
+//! | SPL construct | Core IR output |
+//! |---------------|----------------|
+//! | `type` (struct/enum/alias) | `TypeDef` |
+//! | `refine` | Newtype wrapper + checked constructor function |
+//! | `fn` spec | `Function` signature with [`Contract`] metadata |
+//! | `examples` | Generated test functions |
+//! | `effects` / `capability` | `CapabilityDef` + capability parameters |
+//!
+//! [`Contract`]: speclang_ir::Contract
 
 pub mod lower;

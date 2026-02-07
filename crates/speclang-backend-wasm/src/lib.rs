@@ -1,32 +1,39 @@
 //! WASM/WASI backend for Core IR.
 //!
-//! Generates WebAssembly Text format (WAT) from Core IR modules, with
-//! WASI preview-1 support for I/O operations. The generated WAT can be
-//! assembled to `.wasm` using any standard tool (e.g., `wat2wasm`).
+//! Generates WebAssembly Text format (WAT) from a [`speclang_ir::Module`],
+//! with WASI preview-1 support for I/O operations.  The generated WAT can
+//! be assembled to `.wasm` using any standard tool (e.g., `wat2wasm`).
 //!
-//! ## Architecture
+//! # Usage
+//!
+//! ```ignore
+//! use speclang_backend_wasm::generate_wasm;
+//!
+//! let wat_source = generate_wasm(&module);
+//! std::fs::write("output.wat", &wat_source)?;
+//! // Then: wat2wasm output.wat -o output.wasm
+//! //       wasmtime output.wasm
+//! ```
+//!
+//! # Architecture
 //!
 //! The backend maps Core IR constructs to WASM as follows:
 //!
-//! - **Primitives**: `i32`, `i64`, `f32`, `f64` map directly to WASM value types.
-//!   `Bool` and smaller integers become `i32`. `String` and `Bytes` use linear
-//!   memory with `(i32, i32)` pointer+length pairs.
+//! | Core IR | WASM representation |
+//! |---------|--------------------|
+//! | `i32`, `u32`, `Bool` | `i32` |
+//! | `i64`, `u64` | `i64` |
+//! | `f32` | `f32` |
+//! | `f64` | `f64` |
+//! | `String`, `Bytes` | `(i32, i32)` pointer+length in linear memory |
+//! | `struct` | Flattened into linear memory; passed as `i32` pointer |
+//! | `enum` | Tagged union in linear memory (discriminant + payload) |
+//! | Capabilities | Zero-size; elided from function signatures |
+//! | `requires` contracts | `unreachable`-trap guards |
+//! | `ensures` contracts | Comments only |
 //!
-//! - **Structs**: Flattened into linear memory. Struct values are represented as
-//!   `i32` pointers into linear memory.
-//!
-//! - **Enums**: Tagged unions in linear memory. Discriminant tag + payload.
-//!
-//! - **Functions**: Each Core IR function becomes a WASM function. Public
-//!   functions are exported.
-//!
-//! - **Capabilities**: Represented as empty tokens (zero-size). Capability
-//!   parameters are elided from WASM function signatures.
-//!
-//! - **Contracts**: `requires` contracts become `unreachable`-trap guards in
-//!   debug mode. `ensures` are comments only.
-//!
-//! - **WASI**: Import `fd_write` for console output, `proc_exit` for exits.
+//! WASI preview-1 imports: `fd_write` for console output, `proc_exit`
+//! for process termination.
 
 pub mod codegen;
 

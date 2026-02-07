@@ -1,15 +1,21 @@
 //! Core IR verifier.
 //!
-//! Enforces:
-//! - Type safety (well-formed types, expressions match expected types)
-//! - Duplicate name detection
-//! - Function body return type consistency
-//! - Named type resolution within the module
+//! A suite of analysis and verification passes that run over a
+//! [`speclang_ir::Module`] after lowering.  Each pass is independent
+//! and reports diagnostics on failure.
 //!
-//! Future phases (stubs):
-//! - Ownership and borrowing rules (Rust-like) → `ownership`
-//! - Capability threading (no hidden I/O) → `capabilities`
-//! - Exhaustive pattern matching → `exhaustiveness`
+//! # Passes
+//!
+//! | Module | What it checks |
+//! |--------|----------------|
+//! | [`typecheck`] | Well-formed types, expression types, return type consistency, duplicate names |
+//! | [`contract_pass`] | Contract well-formedness and placement |
+//! | [`capabilities`] | Effect containment — functions only use declared capabilities |
+//! | [`ownership`] | Ownership and borrowing rules (move/borrow/drop) |
+//! | [`exhaustiveness`] | Pattern match exhaustiveness |
+//! | [`regions`] | Region lifetime consistency |
+//! | [`proptest`] | Property-based test harness generation |
+//! | [`fuzz`] | Fuzz target generation from specs |
 
 pub mod capabilities;
 pub mod contract_pass;

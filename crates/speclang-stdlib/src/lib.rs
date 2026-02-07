@@ -1,9 +1,23 @@
 //! Standard library modules for the speclang compiler.
 //!
-//! Each submodule provides a function that returns a `Module` containing
-//! the type definitions and extern function declarations for that part
-//! of the standard library. These modules are referenced during SPL
-//! name resolution, type checking, and lowering.
+//! Each submodule provides a `module()` function that returns a
+//! [`speclang_ir::Module`] containing the type definitions and extern
+//! function declarations for that part of the standard library.
+//!
+//! # Modules
+//!
+//! | Module | Contents |
+//! |--------|----------|
+//! | [`core`] | `Option`, `Result`, equality, ordering |
+//! | [`math`] | Arithmetic, trigonometry, constants |
+//! | [`mem`] | Region allocation, pointer operations |
+//! | [`bytes`] | Raw byte buffer operations |
+//! | [`text`] | UTF-8 string operations |
+//! | [`collections`] | `Vec`, `Set`, `Map` |
+//! | [`contracts`] | Pure helpers for contract lowering |
+//!
+//! Use [`all_stdlib_modules()`] to get every module at once, or
+//! [`find_stdlib_module()`] to look up a single module by name.
 
 pub mod core;
 pub mod math;

@@ -17,6 +17,14 @@
 //! spec = "src/main.spl"
 //! impl = "src/main.impl"
 //! ```
+//!
+//! # Crate layout
+//!
+//! - [`manifest`] — TOML parsing into [`Manifest`], [`PackageMeta`],
+//!   [`Dependency`], [`Target`] types.
+//! - [`resolve`] — Dependency graph construction ([`DepGraph`]) and
+//!   version resolution.
+//! - [`discover`] — Walk the filesystem to [`find_manifest()`].
 
 pub mod manifest;
 pub mod resolve;

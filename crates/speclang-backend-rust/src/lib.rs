@@ -1,10 +1,28 @@
 //! Rust transpiler backend for Core IR.
 //!
-//! Generates idiomatic Rust source code from Core IR modules, mapping:
-//! - Core IR types → Rust types (struct, enum, tuple, primitives)
-//! - Ownership/regions → Rust `Box`, `&`, `&mut`, `&[T]`, `&mut [T]`
-//! - Capabilities → Rust trait-based capability tokens
-//! - Functions/contracts → Rust functions with `debug_assert!` guards
-//! - Control flow → Rust `if`, `match`, `let`, etc.
+//! Generates idiomatic Rust source code from a [`speclang_ir::Module`].
+//!
+//! # Type mapping
+//!
+//! | Core IR | Rust |
+//! |---------|------|
+//! | `i32`, `u64`, … | `i32`, `u64`, … |
+//! | `own[T]` | `Box<T>` |
+//! | `ref[T]` / `mutref[T]` | `&T` / `&mut T` |
+//! | `slice[T]` / `mutslice[T]` | `&[T]` / `&mut [T]` |
+//! | `struct { … }` | `struct` with named fields |
+//! | `enum { … }` | `enum` with variants |
+//! | capabilities | Zero-size marker types |
+//!
+//! Contracts are emitted as `debug_assert!` guards.  The generated code
+//! compiles with `rustc` and preserves the ownership semantics of Core IR.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! use speclang_backend_rust::codegen::RustCodeGen;
+//!
+//! let rust_source = RustCodeGen::new().generate(&module);
+//! ```
 
 pub mod codegen;
