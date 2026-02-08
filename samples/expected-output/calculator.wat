@@ -1,11 +1,6 @@
- 40 | impl Parser {
-...
-109 |     fn check(&self, kind: &TokenKind) -> bool {
-46 | impl LowerCtx {
-...
-54 |     fn err(&mut self, msg: impl Into<String>) {
 (module $calculator
   ;; Generated from speclang module `calculator`
+
   ;; WASI preview-1 imports
   (import "wasi_snapshot_preview1" "fd_write"
     (func $fd_write (param i32 i32 i32 i32) (result i32))
@@ -13,10 +8,13 @@
   (import "wasi_snapshot_preview1" "proc_exit"
     (func $proc_exit (param i32))
   )
+
   ;; Linear memory (1 page = 64KB)
   (memory (export "memory") 1)
+
   ;; Stack pointer
   (global $sp (mut i32) (i32.const 1024))
+
   ;; @req REQ-1
   (func $test_add_0 (export "test_add_0") 
     i32.const 2
@@ -28,6 +26,7 @@
     ;; assert: positive
     (if (then (unreachable)))
   )
+
   ;; @req REQ-1
   (func $test_add_1 (export "test_add_1") 
     i32.const 0
@@ -39,6 +38,7 @@
     ;; assert: zeros
     (if (then (unreachable)))
   )
+
   ;; @req REQ-1
   (func $test_add_2 (export "test_add_2") 
     i32.const 1000
@@ -50,10 +50,12 @@
     ;; assert: large
     (if (then (unreachable)))
   )
+
   ;; @id calc.add.v1
   ;; @compat stable-call
   (func $add (export "add") (param $a i64) (param $b i64) (result i64)
   )
+
   ;; @req REQ-1
   (func $test_subtract_0 (export "test_subtract_0") 
     i32.const 10
@@ -65,6 +67,7 @@
     ;; assert: basic
     (if (then (unreachable)))
   )
+
   ;; @req REQ-1
   (func $test_subtract_1 (export "test_subtract_1") 
     i32.const 7
@@ -76,10 +79,12 @@
     ;; assert: same
     (if (then (unreachable)))
   )
+
   ;; @id calc.sub.v1
   ;; @compat stable-call
   (func $subtract (export "subtract") (param $a i64) (param $b i64) (result i64)
   )
+
   ;; @req REQ-1
   (func $test_multiply_0 (export "test_multiply_0") 
     i32.const 3
@@ -91,6 +96,7 @@
     ;; assert: basic
     (if (then (unreachable)))
   )
+
   ;; @req REQ-1
   (func $test_multiply_1 (export "test_multiply_1") 
     i32.const 5
@@ -102,6 +108,7 @@
     ;; assert: by_zero
     (if (then (unreachable)))
   )
+
   ;; @req REQ-1
   (func $test_multiply_2 (export "test_multiply_2") 
     i32.const 7
@@ -113,10 +120,12 @@
     ;; assert: by_one
     (if (then (unreachable)))
   )
+
   ;; @id calc.mul.v1
   ;; @compat stable-call
   (func $multiply (export "multiply") (param $a i64) (param $b i64) (result i64)
   )
+
   ;; @req REQ-1
   (func $test_divide_0 (export "test_divide_0") 
     i32.const 10
@@ -128,6 +137,7 @@
     ;; assert: basic
     (if (then (unreachable)))
   )
+
   ;; @req REQ-1
   (func $test_divide_1 (export "test_divide_1") 
     i32.const 7
@@ -139,6 +149,7 @@
     ;; assert: truncates
     (if (then (unreachable)))
   )
+
   ;; @id calc.div.v1
   ;; @compat stable-call
   (func $divide (export "divide") (param $a i64) (param $b i64) (result i64)
@@ -155,6 +166,7 @@
     ;; assert: precondition failed: divide [REQ-2]
     (if (then (unreachable)))
   )
+
   (func $test_factorial_0 (export "test_factorial_0") 
     i32.const 0
     call $factorial
@@ -164,6 +176,7 @@
     ;; assert: zero
     (if (then (unreachable)))
   )
+
   (func $test_factorial_1 (export "test_factorial_1") 
     i32.const 1
     call $factorial
@@ -173,6 +186,7 @@
     ;; assert: one
     (if (then (unreachable)))
   )
+
   (func $test_factorial_2 (export "test_factorial_2") 
     i32.const 5
     call $factorial
@@ -182,6 +196,7 @@
     ;; assert: five
     (if (then (unreachable)))
   )
+
   (func $test_factorial_3 (export "test_factorial_3") 
     i32.const 6
     call $factorial
@@ -191,6 +206,7 @@
     ;; assert: six
     (if (then (unreachable)))
   )
+
   ;; @id calc.fact.v1
   ;; @compat stable-call
   (func $factorial (export "factorial") (param $n i64) (result i64)
@@ -208,6 +224,7 @@
     (if (then (unreachable)))
     ;; ensures: <contract>
   )
+
   (func $test_power_0 (export "test_power_0") 
     i32.const 3
     i32.const 2
@@ -218,6 +235,7 @@
     ;; assert: square
     (if (then (unreachable)))
   )
+
   (func $test_power_1 (export "test_power_1") 
     i32.const 2
     i32.const 3
@@ -228,6 +246,7 @@
     ;; assert: cube
     (if (then (unreachable)))
   )
+
   (func $test_power_2 (export "test_power_2") 
     i32.const 5
     i32.const 0
@@ -238,6 +257,7 @@
     ;; assert: zero_exp
     (if (then (unreachable)))
   )
+
   (func $test_power_3 (export "test_power_3") 
     i32.const 7
     i32.const 1
@@ -248,6 +268,7 @@
     ;; assert: one_exp
     (if (then (unreachable)))
   )
+
   ;; @id calc.pow.v1
   ;; @compat stable-call
   (func $power (export "power") (param $base i64) (param $exp i64) (result i64)
@@ -265,4 +286,5 @@
     (if (then (unreachable)))
     ;; ensures: <contract>
   )
+
 )

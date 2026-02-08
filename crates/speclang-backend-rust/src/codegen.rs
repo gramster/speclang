@@ -35,8 +35,38 @@ impl RustCodeGen {
         self.emit_types(&module.type_defs);
         self.emit_capabilities(&module.cap_defs);
         self.emit_externs(&module.externs);
-        self.emit_functions(&module.functions);
+
+        // Partition functions into implementation and test functions.
+        let (impl_fns, test_fns): (Vec<&Function>, Vec<&Function>) = module
+            .functions
+            .iter()
+            .partition(|f| !Self::is_test_fn(f));
+
+        for f in &impl_fns {
+            self.emit_function(f);
+            self.blank();
+        }
+
+        if !test_fns.is_empty() {
+            self.line("#[cfg(test)]");
+            self.line("mod tests {");
+            self.push();
+            self.line("use super::*;");
+            self.blank();
+            for f in &test_fns {
+                self.emit_function(f);
+                self.blank();
+            }
+            self.pop();
+            self.line("}");
+        }
+
         self.buf
+    }
+
+    /// True if this function is a generated test (from examples or props).
+    fn is_test_fn(f: &Function) -> bool {
+        f.name.starts_with("test_") || f.name.starts_with("prop_")
     }
 
     // -----------------------------------------------------------------------
@@ -286,14 +316,9 @@ impl RustCodeGen {
     // Functions
     // -----------------------------------------------------------------------
 
-    fn emit_functions(&mut self, functions: &[Function]) {
-        for f in functions {
-            self.emit_function(f);
-            self.blank();
-        }
-    }
-
     fn emit_function(&mut self, f: &Function) {
+        let is_test = Self::is_test_fn(f);
+
         self.emit_annotations(&f.annotations);
 
         // Build signature.
@@ -306,32 +331,24 @@ impl RustCodeGen {
             self.line(&format!("// effects: {}", eff_names.join(", ")));
         }
 
-        // Test attribute.
-        let is_test = f
-            .annotations
-            .iter()
-            .any(|a| matches!(a, Annotation::Id(id) if id.starts_with("test_") || id.starts_with("prop_")));
-
         if is_test {
             self.line("#[test]");
         }
 
-        self.line(&format!("pub fn {name}({params}){ret} {{", name = f.name));
+        let vis = if is_test { "fn" } else { "pub fn" };
+        self.line(&format!("{vis} {name}({params}){ret} {{", name = f.name));
         self.push();
 
-        // Emit requires contracts as debug_assert! at function entry.
-        for c in &f.contracts {
-            if c.kind == ContractKind::Requires {
-                self.emit_contract_assert(c);
-            }
+        // Body — if empty (spec-only), emit todo!() so the output compiles.
+        let has_body = !f.body.stmts.is_empty() || f.body.expr.is_some();
+        if has_body {
+            self.emit_block_body(&f.body);
+        } else if !is_test {
+            self.line("todo!()");
         }
 
-        // Body.
-        self.emit_block_body(&f.body);
-
-        // Emit ensures contracts.
-        // In practice, ensures would capture the return value, but for now
-        // we just emit them as comments.
+        // Emit ensures contracts as comments (postcondition checking is
+        // handled by the contract_pass, which rewrites the body).
         for c in &f.contracts {
             if c.kind == ContractKind::Ensures {
                 let expr_str = self.render_expr(&c.predicate);
@@ -345,12 +362,18 @@ impl RustCodeGen {
 
     fn emit_contract_assert(&mut self, c: &Contract) {
         let pred = self.render_expr(&c.predicate);
+        let tag = if c.req_tags.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", c.req_tags.join(", "))
+        };
         match c.policy {
             ContractPolicy::Always => {
-                self.line(&format!("assert!({pred});"));
+                self.line(&format!("assert!({pred}, \"precondition failed{tag}\");"));
             }
             ContractPolicy::Debug => {
-                self.line(&format!("debug_assert!({pred});"));
+                self.line(&format!("debug_assert!({pred}, \"precondition failed{tag}\");"));
+                self.line(&format!("assert!({pred}, \"precondition failed{tag}\");"));
             }
             ContractPolicy::Sampled(n) => {
                 self.line(&format!(
@@ -409,9 +432,37 @@ impl RustCodeGen {
             self.emit_stmt(stmt);
         }
         if let Some(tail) = &block.expr {
-            let s = self.render_expr(tail);
+            let s = Self::strip_outer_parens(&self.render_expr(tail));
             self.line(&s);
         }
+    }
+
+    /// Strip unnecessary outer parentheses from a rendered expression.
+    fn strip_outer_parens(s: &str) -> String {
+        let trimmed = s.trim();
+        if trimmed.starts_with('(') && trimmed.ends_with(')') {
+            // Check that the parens are matching (not "(a) + (b)")
+            let inner = &trimmed[1..trimmed.len() - 1];
+            let mut depth = 0i32;
+            let mut balanced = true;
+            for ch in inner.chars() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth < 0 {
+                            balanced = false;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if balanced && depth == 0 {
+                return inner.to_string();
+            }
+        }
+        trimmed.to_string()
     }
 
     fn emit_stmt(&mut self, stmt: &Stmt) {
@@ -430,7 +481,7 @@ impl RustCodeGen {
                 then_block,
                 else_block,
             } => {
-                let cond_s = self.render_expr(cond);
+                let cond_s = Self::strip_outer_parens(&self.render_expr(cond));
                 self.line(&format!("if {cond_s} {{"));
                 self.push();
                 self.emit_block_body(then_block);
@@ -550,7 +601,7 @@ impl RustCodeGen {
             Expr::Call { func, args } => {
                 let func_s = func.join("::");
                 let arg_strs: Vec<String> =
-                    args.iter().map(|a| self.render_expr(a)).collect();
+                    args.iter().map(|a| Self::strip_outer_parens(&self.render_expr(a))).collect();
                 format!("{func_s}({})", arg_strs.join(", "))
             }
             Expr::StructLit { ty, fields } => {
@@ -595,7 +646,7 @@ impl RustCodeGen {
                 then_block,
                 else_block,
             } => {
-                let c = self.render_expr(cond);
+                let c = Self::strip_outer_parens(&self.render_expr(cond));
                 let then_s = self.render_block_inline(then_block);
                 let else_s = self.render_block_inline(else_block);
                 format!("if {c} {{ {then_s} }} else {{ {else_s} }}")
@@ -689,7 +740,7 @@ impl RustCodeGen {
             parts.push(self.render_stmt_inline(stmt));
         }
         if let Some(tail) = &block.expr {
-            parts.push(self.render_expr(tail));
+            parts.push(Self::strip_outer_parens(&self.render_expr(tail)));
         }
         parts.join("; ")
     }
@@ -839,7 +890,7 @@ mod tests {
         });
         let code = generate_rust(&m);
         assert!(code.contains("pub fn add(a: i32, b: i32) -> i32"), "got:\n{code}");
-        assert!(code.contains("(a + b)"), "got:\n{code}");
+        assert!(code.contains("a + b"), "got:\n{code}");
     }
 
     #[test]
@@ -863,11 +914,22 @@ mod tests {
                 policy: ContractPolicy::Debug,
                 req_tags: vec![],
             }],
-            body: Block::new(vec![], Some(Expr::Var("x".into()))),
+            // Simulate contract_pass having injected the assertion into the body.
+            body: Block::new(
+                vec![Stmt::Assert {
+                    cond: Expr::BinOp {
+                        op: BinOp::Gt,
+                        lhs: Box::new(Expr::Var("x".into())),
+                        rhs: Box::new(Expr::Literal(Literal::Int(0))),
+                    },
+                    message: "precondition failed".into(),
+                }],
+                Some(Expr::Var("x".into())),
+            ),
             annotations: vec![],
         });
         let code = generate_rust(&m);
-        assert!(code.contains("debug_assert!((x > 0))"), "got:\n{code}");
+        assert!(code.contains("assert!((x > 0), \"precondition failed\")"), "got:\n{code}");
     }
 
     #[test]
