@@ -11,6 +11,9 @@ spec, and transpiles everything to Rust or WebAssembly.
 **The key insight**: you review the spec (20 lines), not the code (200 lines).
 The toolchain proves they match.
 
+This is an early experiment. It's usable for specifying algothmic style code
+but needs more generality.
+
 ## Quick start
 
 ```bash
