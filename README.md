@@ -3,7 +3,7 @@
 A two-layer systems programming language where **specifications are the
 source of truth**.
 
-Humans (or agents) write short, readable `.spl` specs — types, contracts,
+Humans write (or more likely agents write, humans check) short, readable `.spl` specs — types, contracts,
 examples.  Agents write `.impl` code.  The compiler verifies that every
 implementation conforms to its spec, generates test harnesses from the
 spec, and transpiles everything to Rust or WebAssembly.
